@@ -6,7 +6,7 @@
  */
 static int pwm_goals[6] = {0};
 int current_pwms[6] = {0};
-static int pwm_scale = 40;
+static int pwm_scale = 60;
 
 void set_pwm_freq(int freq)
 {
@@ -112,7 +112,6 @@ void set_pwm(int pwm_id, int value)
  * pwm_id is 0-5, value is percentage - 0-100.
  */
 
-/* XXX fixme:  This should take a percentage. */
 void set_pwm_goal(int pwm_id, int value)
 {
     int other_pwm;

@@ -44,7 +44,6 @@
  */
 int move_joint_all_the_way(int valve)
 {
-    int slow_pwm = 40; /* Some good slow running speed. */
     int out = 0;
     int no_change_count = 0;
     int sensor_num;
@@ -72,7 +71,7 @@ int move_joint_all_the_way(int valve)
     Serial.println(sensorPin[sensor_num]);
 
     /* Set the PWM to move the joint. */
-    set_pwm(valve, slow_pwm);
+    set_pwm(valve, 80);
 
     /* Look for movement, wait until it stops. */
     sensor_reading = read_sensor(sensorPin[sensor_num]);
@@ -119,19 +118,26 @@ int move_joint_all_the_way(int valve)
         delay(100);
     }
 
-    if (i == 100)
+    if (i == 100) {
+        Serial.println("Leg didn't stop moving!");
         return -1;
-    else
+    } else
         return last_sensor_reading;
 }
 
 int calibrate(void)
 {
+    enable_leg();
+
+    Serial.println("Retracting thigh.");
+    move_joint_all_the_way(THIGHPWM_UP);
+
     Serial.println("Retracting knee.");
     /* Move knee up. */
-    move_joint_all_the_way(KNEEPWM_RETRACT);
+/*    move_joint_all_the_way(KNEEPWM_RETRACT); OOPS!  This appears to be backwards? */
+    move_joint_all_the_way(KNEEPWM_EXTEND);
 
-    disable_leg();
+    pwms_off();
 
     Serial.println("Done with calibration.");
 

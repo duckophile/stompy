@@ -27,9 +27,7 @@
 /*
  * XXX fixme:  info command should print out more stuff - goals, sensor goals, etc.
  *
- * XXX fixme: When I exit joystick mode I should set the goal to the
- * current position!
- * Or, really, joystick mode should move the goal, not actuate the PWMs.
+ * Joystick mode should move the goal, not actuate the PWMs.
  *
  * The command interpreter should be able to use a regular serial terminal.
  */
@@ -102,14 +100,13 @@ const int pwm_pins[6]  = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRAC
 
 #define DEADMAN_PIN		0
 
-//enable pins for motor divers
+//enable pins for motor drivers
 #define ENABLE_PIN		1
 #define ENABLE_PIN_HIP		2
 
 #define M1FB_PIN		21
 #define M2FB_PIN		22
 #define M1FB_HIP_PIN		23
-
 
 static int debug_flag = 0;  /* Enable verbose output. */
 static int old_debug_flag = 0;
@@ -128,12 +125,22 @@ const char *joint_down_actions[] = {"forward", "down",  "in"};
 // Block for reading sensors and setting the PWM to drive the solenoids
 #define BIT_RESOLUTION pow(2,10)-1
 
-int sensorGoal[3]    = {0,0,0};
-int goingHot[3]      = {0,0,0};
-float xyz_goal[3]    = {0,0,0};
-float goal_angles[3] = {0, 0, 0};
+int sensor_goals[3]    = {0,0,0};
+float xyz_goal[3]      = {0,0,0};
+float angle_goals[3]   = {0,0,0};
 
-int sensorReading[3] = {0, 0, 0};
+int goingHot[3]        = {0,0,0};
+
+int sensor_readings[3] = {0,0,0};
+
+/*
+ * Angles in degrees -
+ * Hip is zero when straight out from the robot body.
+ * Hip angle is zero when the thigh is parallel to the ground
+ * Knee angle is between thigh and calf (13 degrees fully retracted)
+ */
+float current_deg[3];
+float current_rad[3];
 
 int sensorPin[3] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN};
 // this is the distance in sensor reading that is close enough for directed movement
@@ -148,8 +155,6 @@ int joystick_mode = 0;
 
 int deadMan = 0; //JOYSTICK is OFF if pin is low (pull high to enable joystick).
 int deadman_forced = 0; /* Ignore the deadman if this is set. */
-
-int current_reading_pin[] = {M2FB_PIN, M1FB_PIN, M1FB_HIP_PIN};
 
 //values for home position of leg
 //x home is knee fully retracted (cylindar fully extended) i.e. large pot value
@@ -178,15 +183,6 @@ float kneeAngleMin = 13;
 float kneeAngleMax = 123;
 float kneeSensorUnitsPerDeg;
 
-/*
- * Angles in degrees -
- * Hip is zero when straight out from the robot body.
- * Hip angle is zero when the thigh is parallel to the ground
- * Knee angle is between thigh and calf (13 degrees fully retracted)
- */
-float current_deg[3];
-float current_rad[3];
-
 // kinematics block
 /*  Forward kinematics for stompy
     x = cos(theta1) * [L1 + L2*cos(theta2) + L3*cos(theta2 + theta3 -180deg)]
@@ -196,14 +192,19 @@ float current_rad[3];
 
 //leg link lengths hip, thigh, and knee
 
-#define L1 11
-#define L2 54
+#define L1		11
+#define L2		54
 /* Knee to ankle */
-#define L3 72
+#define L3		72
 
-float currentX;
-float currentY;
-float currentZ;
+#define HIP_LEN		11
+#define THIGH_LEN	54
+#define KNEE_LEN	72
+
+#define X		0
+#define Y		1
+#define Z		2
+float current_xyz[3];
 
 /*
  * Take three threadings and return the middle one.  This should
@@ -262,6 +263,20 @@ int func_scale(void)
     return 0;
 }
 
+/* Set PWM. */
+int func_pwm(void)
+{
+    int pwm;
+    int percent;
+
+    pwm = read_int();
+    percent = read_int();
+
+    set_pwm(pwm, percent);
+
+    return 0;
+}
+
 /* Set PWM frequency. */
 int func_freq(void)
 {
@@ -305,7 +320,7 @@ void print_current(void)
 {
     int i;
 
-    Serial.print("Current pwms:   ");
+    Serial.print("Current PWMs:    ");
     for (i = 0;i < 3;i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
@@ -313,7 +328,7 @@ void print_current(void)
         Serial.print(current_pwms[i]);
     }
     Serial.println("");
-    Serial.print("Current pwms:   ");
+    Serial.print("Current PWMs:    ");
     for (i = 3;i < 6;i++) {
         Serial.print("\t");
         Serial.print(joint_names[i - 3]);
@@ -322,7 +337,7 @@ void print_current(void)
     }
     Serial.println("");
 
-    Serial.print("Current angles: ");
+    Serial.print("Current angles:  ");
     for (i = 0; i < 3; i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
@@ -331,21 +346,20 @@ void print_current(void)
     }
     Serial.println("");
 
-    Serial.print("Current sensors:");
+    Serial.print("Current sensors: ");
     for (i = 0; i < 3; i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(sensorReading[i]);
+        Serial.print(sensor_readings[i]);
     }
     Serial.println("");
 
     Serial.print("Current XYZ:    \t");
-    Serial.print(currentX);
-    Serial.print("\t");
-    Serial.print(currentY);
-    Serial.print("\t");
-    Serial.print(currentZ);
+    for (i = 0; i < 3; i++) {
+        Serial.print("\t");
+        Serial.print(current_xyz[i]);
+    }
     Serial.println("");
 
     return;
@@ -360,7 +374,7 @@ void print_goals(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(sensorGoal[i]);
+        Serial.print(sensor_goals[i]);
     }
     Serial.println("");
 
@@ -368,6 +382,13 @@ void print_goals(void)
     for (i = 0;i < 3;i++) {
         Serial.print("\t");
         Serial.print(xyz_goal[i]);
+    }
+    Serial.println("");
+
+    Serial.print("Angle goals:     ");
+    for (i = 0;i < 3;i++) {
+        Serial.print("\t");
+        Serial.print(angle_goals[i]);
     }
     Serial.println("");
 
@@ -455,6 +476,7 @@ struct {
     { "info",      func_info      },
     { "joystick",  func_joystick  }, /* Enable jpoystick mode. */
     { "park",      func_none      }, /* Move leg to parked position. */
+    { "pwm",       func_pwm       }, /* Set a PWM. */
     { "stop",      func_stop      }, /* Stop moving. */
     { "where",     func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,        NULL           }
@@ -488,10 +510,15 @@ float read_float(void)
 
 void read_cmd(void)
 {
-    int len;
     int n;
     int caught = 0;
     int ch = 0;
+    static int prompted = 0;
+
+    if (!prompted) {
+        Serial.print("bash$ ");
+        prompted = 1;
+    }
 
     if (Serial.available() <= 0)
         return;
@@ -531,15 +558,21 @@ void read_cmd(void)
 
     /* We have a newline, so read the cmd out of the buffer. */
 
+    prompted = 0;
+
     if (cmd_len == 0) {
         func_info();
         return;
     }
 
+    /* Null terminate the command. */
+    cmd_ptr = cmd_buf;
+    while ((*cmd_ptr != 0) && (*cmd_ptr != ' '))
+        cmd_ptr++;
+    *(cmd_ptr++) = 0;
+
     for (n = 0; cmd_table[n].name != NULL;n++) {
-        len = strlen(cmd_table[n].name);
-        if (!strncmp(cmd_buf, cmd_table[n].name, len)) {
-            cmd_ptr = cmd_buf + len;
+        if (!strcmp(cmd_buf, cmd_table[n].name)) {
             cmd_table[n].func();
             caught = 1;
         }
@@ -554,59 +587,6 @@ void read_cmd(void)
 
     return;
 }
-
-#if 0
-int read_cmd(void)
-{
-    static char cmd[16];
-    static char ch;
-    static int size = 0;
-    int done = 0;
-    int caught = 0;
-    int n;
-
-    if (Serial.available() <= 0)
-        return 0;
-
-    while (Serial.available() > 0) {
-        ch = Serial.read();
-        if ((ch == ' ') || (ch == '\r') || (ch == '\n') || (size == 15)) {
-            done = 1;
-            break;
-        }
-        cmd[size++] = ch;
-    }
-    cmd[size] = 0;
-
-    if (!done)
-        return 0;
-
-    if (size == 0) {
-        func_info();
-        return 0;
-    }
-
-    for (n = 0; cmd_table[n].name != NULL;n++)
-        if (!strcmp(cmd, cmd_table[n].name)) {
-            cmd_table[n].func();
-            caught = 1;
-        }
-
-    if (!caught) {
-        Serial.print("Unknown command ");
-        Serial.println(cmd);
-    }
-
-    size = 0;
-    if ((ch != '\r') || (ch == '\n')){
-        while (((ch = Serial.read()) != '\r') && (ch != '\n'))
-            Serial.print(ch);
-        Serial.println(" <-- extra chars.");
-    }
-
-    return 1;
-}
-#endif
 
 int func_help(void)
 {
@@ -626,12 +606,12 @@ int func_help(void)
  * Also Sets the sensor goals that correspond to those angles.
  *
  * Input is (x,y,z)
- * Output is desired  sensor readings in sensorGoal[HIP, THIGH, KNEE].
+ * Output is desired  sensor readings in sensor_goals[HIP, THIGH, KNEE].
  *
  * XXX fixme: This should be two functions, one to convert (x,y,z) to
  * three angles, and another to convert that to sensor values.
  */
-void inverse_kin(float x, float y, float z)
+void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
 {
     float theta1R, theta2R, theta3R; /* Goal angles in degrees. */
     float theta1, theta2, theta3; /* Goal angles in radians. */
@@ -639,15 +619,15 @@ void inverse_kin(float x, float y, float z)
 
     Serial.print("New goal (x,y,z): ");
     Serial.print("(");
-    Serial.print(x);
+    Serial.print(xyz[X]);
     Serial.print(", ");
-    Serial.print(y);
+    Serial.print(xyz[Y]);
     Serial.print(", ");
-    Serial.print(z);
+    Serial.print(xyz[Z]);
     Serial.println(")");
 
     /* HIP - theta1 */
-    theta1R = atan(y/x);
+    theta1R = atan(xyz[Y]/xyz[X]);
     //convert to degrees
     theta1 = (theta1R * 4068) / 71;
     //angle goal to pot reading
@@ -665,36 +645,35 @@ void inverse_kin(float x, float y, float z)
     float r;
     float x1;
     if (theta1R == 0) {
-        x1 = (x - L1);
+        x1 = (xyz[X] - L1);
     }
     else {
-        x1 = (y/sin(theta1R)) - L1;
+        x1 = (xyz[Y]/sin(theta1R)) - L1;
     }
     x1 = abs(x1);
-    float beta = atan(z/x1);
-    if (x == L1) {
+    float beta = atan(xyz[Z]/x1);
+    if (xyz[X] == L1) {
         beta = -(PI/2);
     }
-    else if (x < L1) {
-        if (z == 0) {
+    else if (xyz[X] < L1) {
+        if (xyz[Z] == 0) {
             r = x1;
         }
         else {
-            r = z/sin(beta);
+            r = xyz[Z]/sin(beta);
         }
         r = abs(r);
         float gama = asin(x1/r);
         beta = -(gama + PI/2);
     }
     else {
-        beta = atan(z/x1);
-
+        beta = atan(xyz[Z]/x1);
     }
-    if (z == 0) {
+    if (xyz[Z] == 0) {
         r = x1;
     }
     else {
-        r = z/sin(beta);
+        r = xyz[Z]/sin(beta);
     }
     r = abs(r);
     theta2R = beta + acos((sq(L2) + sq(r) - sq(L3))/(2*L2*r));
@@ -739,26 +718,26 @@ void inverse_kin(float x, float y, float z)
     goingHot[KNEE] = 1;
     Serial.println("Knee going hot.");
 
-    sensorGoal[HIP]   = hipGoal;
-    sensorGoal[THIGH] = thighGoal;
-    sensorGoal[KNEE]  = kneeGoal;
+    sense_goals[HIP]   = hipGoal;
+    sense_goals[THIGH] = thighGoal;
+    sense_goals[KNEE]  = kneeGoal;
 
-    goal_angles[HIP]   = theta1;
-    goal_angles[THIGH] = theta2;
-    goal_angles[KNEE]  = theta3;
+    deg_goals[HIP]   = theta1;
+    deg_goals[THIGH] = theta2;
+    deg_goals[KNEE]  = theta3;
 
     Serial.print("\nNew Goals: (x,y,z):\t");
-    print_xyz(x, y, z);
+    print_xyz(xyz[X], xyz[Y], xyz[Z]);
     Serial.println("");
     Serial.print("Goal angles (deg):\t");
     print_xyz(theta1, theta2, theta3);
     Serial.println("");
     Serial.print("Sensor goals:\thip\t");
-    Serial.print(sensorGoal[HIP]);
+    Serial.print(sense_goals[HIP]);
     Serial.print("\tthigh\t");
-    Serial.print(sensorGoal[THIGH]);
+    Serial.print(sense_goals[THIGH]);
     Serial.print("\tknee\t");
-    Serial.print(sensorGoal[KNEE]);
+    Serial.print(sense_goals[KNEE]);
     Serial.println("");
 
     return;
@@ -770,20 +749,20 @@ void inverse_kin(float x, float y, float z)
  * Calculate joint angles in both degrees and radians, based on the
  * last sensor readings.
  *
- * Takes sensor readings from sensorReadings[] and calculates the
+ * Takes sensor readings from sensor_readingss[] and calculates the
  * angles in degrees into current_deg[] and radians into
  * current_rad[].
  *
  * XXX fixme:  This should have the sensor readings passed in and return the angles.
  */
-void calculate_angles(void)
+void calculate_angles(int *sensors, float *degrees)
 {
-    current_deg[HIP]   = ((sensorReading[HIP] - hipPotMin) / hipSensorUnitsPerDeg) + hipAngleMin;
-    current_deg[THIGH] = thighAngleMax - ((sensorReading[THIGH] - thighPotMin) / thighSensorUnitsPerDeg);
-    current_deg[KNEE]  = kneeAngleMax  - ((sensorReading[KNEE]  - kneePotMin)  / kneeSensorUnitsPerDeg);
+    degrees[HIP]   = ((sensors[HIP] - hipPotMin) / hipSensorUnitsPerDeg) + hipAngleMin;
+    degrees[THIGH] = thighAngleMax - ((sensors[THIGH] - thighPotMin) / thighSensorUnitsPerDeg);
+    degrees[KNEE]  = kneeAngleMax  - ((sensors[KNEE]  - kneePotMin)  / kneeSensorUnitsPerDeg);
 
     for (int i = 0;i < 3;i++)
-        current_rad[i] = (current_deg[i] * 71) / 4068;
+        current_rad[i] = (degrees[i] * 71) / 4068;
 
     DEBUG("Angles:\t");
     for (int i = 0; i < 3; i++) {
@@ -791,7 +770,7 @@ void calculate_angles(void)
         DEBUG("\t");
         DEBUG(joint_names[i]);
         DEBUG("\t");
-        DEBUG(current_deg[i]);
+        DEBUG(degrees[i]);
     }
     DEBUGLN("");
 
@@ -806,16 +785,16 @@ void calculate_angles(void)
  */
 void calculate_xyz(void)
 {
-    currentX = cos(current_rad[HIP]) * (L1 + L2*cos(current_rad[THIGH]) + L3*cos(current_rad[THIGH] + current_rad[KNEE] - PI));
-    currentY = currentX * tan(current_rad[HIP]);
-    currentZ = (L2 * sin(current_rad[THIGH])) + (L3 * sin(current_rad[THIGH] + current_rad[KNEE] - PI));
+    current_xyz[X] = cos(current_rad[HIP]) * (L1 + L2*cos(current_rad[THIGH]) + L3*cos(current_rad[THIGH] + current_rad[KNEE] - PI));
+    current_xyz[Y] = current_xyz[X] * tan(current_rad[HIP]);
+    current_xyz[Z] = (L2 * sin(current_rad[THIGH])) + (L3 * sin(current_rad[THIGH] + current_rad[KNEE] - PI));
 
     DEBUG("Current\t\tX:\t");
-    DEBUG(currentX);
+    DEBUG(current_xyz[X]);
     DEBUG("\tY:\t");
-    DEBUG(currentY);
+    DEBUG(current_xyz[Y]);
     DEBUG("\tZ:\t");
-    DEBUG(currentZ);
+    DEBUG(current_xyz[Z]);
     DEBUGLN("");
 
     return;
@@ -827,13 +806,13 @@ void calculate_xyz(void)
 void reset_current_location(void)
 {
     /* Set our goal to the current position. */
-    read_sensors();
-    calculate_angles();
+    read_sensors(sensor_readings);
+    calculate_angles(sensor_readings, current_deg);
     calculate_xyz();
 
-    xyz_goal[0] = currentX;
-    xyz_goal[1] = currentY;
-    xyz_goal[2] = currentZ;
+    xyz_goal[X] = current_xyz[X];
+    xyz_goal[Y] = current_xyz[Y];
+    xyz_goal[Z] = current_xyz[Z];
 }
 
 void setup(void)
@@ -888,17 +867,17 @@ void print_reading(int i, int sensor, int goal, const char *joint, const char *a
 }
 
 /* Reads the current leg position sensors. */
-void read_sensors(void)
+void read_sensors(int *sensors)
 {
     DEBUG("Sensors:");
     for (int i = 0; i < 3; i++) {
         /* Read sensors even if we're not moving. */
-/*        sensorReading[i] = analogRead(sensorPin[i]);*/
-        sensorReading[i] = read_sensor(sensorPin[i]);
+/*        sensor_readings[i] = analogRead(sensorPin[i]);*/
+        sensors[i] = read_sensor(sensorPin[i]);
         DEBUG("\t");
         DEBUG(joint_names[i]);
         DEBUG("\t");
-        DEBUG(sensorReading[i]);
+        DEBUG(sensor_readings[i]);
     }
     DEBUGLN("");
 
@@ -932,18 +911,18 @@ void write_pwms(void)
         DEBUG(" sensor ");
         DEBUG(i);
         DEBUG(":\t");
-        DEBUG(sensorReading[i]);
+        DEBUG(sensor_readings[i]);
         DEBUG("\tgoal:\t");
-        DEBUG(sensorGoal[i]);
+        DEBUG(sensor_goals[i]);
         //compare sensor reading to goal and only move if not close enough
-        if (abs(sensorReading[i] - sensorGoal[i]) >= closeEnough) {
+        if (abs(sensor_readings[i] - sensor_goals[i]) >= closeEnough) {
             DEBUGLN("\tJoint is not close enough.");
-            if (sensorReading[i] > sensorGoal[i]) {
+            if (sensor_readings[i] > sensor_goals[i]) {
                 set_pwm_goal(i, 100); /* 100% is ambitious. */
-/*                print_reading(i, sensorReading[i], sensorGoal[i], joint_names[i], joint_up_actions[i]);*/
-            } else if (sensorReading[i] < sensorGoal[i]) {
+/*                print_reading(i, sensor_readings[i], sensor_goals[i], joint_names[i], joint_up_actions[i]);*/
+            } else if (sensor_readings[i] < sensor_goals[i]) {
                 set_pwm_goal(i + 3, 100);
-/*                print_reading(i, sensorReading[i], sensorGoal[i], joint_names[i], joint_down_actions[i]);*/
+/*                print_reading(i, sensor_readings[i], sensor_goals[i], joint_names[i], joint_down_actions[i]);*/
             }
         } else {
             Serial.print(joint_names[i]);
@@ -951,9 +930,9 @@ void write_pwms(void)
             Serial.print(" sensor ");
             Serial.print(i);
             Serial.print(":\t");
-            Serial.print(sensorReading[i]);
+            Serial.print(sensor_readings[i]);
             Serial.print("\tgoal:\t");
-            Serial.print(sensorGoal[i]);
+            Serial.print(sensor_goals[i]);
 
             /*
              * if joint was in motion and the goal was reached - turn
@@ -972,15 +951,15 @@ void write_pwms(void)
     }
 }
 
-int read_xyz(float *x, float *y, float *z)
+int read_xyz(float *xyz)
 {
     // look for first valid integar to be x
-    *x = read_float();
-    *y = read_float();
-    *z = read_float();
+    xyz[X] = read_float();
+    xyz[Y] = read_float();
+    xyz[Z] = read_float();
 
-    if (*x == 0) {
-        *x = *x + .0001;
+    if (xyz[X] == 0) {
+        xyz[X] = xyz[X] + .0001;
         //Serial.println("x = 0 so .0001 was added to avoid degenerate case");
     }
 
@@ -1069,9 +1048,9 @@ void loop()
     check_deadman();
 
     /* Read the sensors. */
-    read_sensors();
+    read_sensors(sensor_readings);
     /* Turn sensor readings into joint angles. */
-    calculate_angles();
+    calculate_angles(sensor_readings, current_deg);
     /* Turn joint angles into (x,y,z). */
     calculate_xyz();
 
@@ -1088,13 +1067,13 @@ void loop()
      * If the foot has moved an inch in any direction then print the
      * current locatioin.
      */
-    if ((abs(currentX - last_x_inches) > 1) ||
-        (abs(currentY - last_y_inches) > 1) ||
-        (abs(currentZ - last_z_inches) > 1))
+    if ((abs(current_xyz[X] - last_x_inches) > 1) ||
+        (abs(current_xyz[Y] - last_y_inches) > 1) ||
+        (abs(current_xyz[Z] - last_z_inches) > 1))
     {
 #if 0
         Serial.print("Current (x,y,z): ");
-        print_xyz(currentX, currentY, currentZ);
+        print_xyz(current_xyz[X], currentY, currentZ);
         Serial.print(" Goal: ");
         print_xyz(xyz_goal[0], xyz_goal[1], xyz_goal[2]);
         Serial.println("");
@@ -1105,9 +1084,9 @@ void loop()
         Serial.println("");
 */
 
-        last_x_inches = currentX;
-        last_y_inches = currentY;
-        last_z_inches = currentZ;
+        last_x_inches = current_xyz[X];
+        last_y_inches = current_xyz[Y];
+        last_z_inches = current_xyz[Z];
     }
 
     // A short delay so I can read the serial while programing.
@@ -1123,7 +1102,7 @@ void loop()
  */
 int func_go(void)
 {
-    float x_goal, y_goal, z_goal;
+    float xyz[3];
 
     joystick_mode = 0;
 
@@ -1133,12 +1112,12 @@ int func_go(void)
     debug_flag = 1;	/* Enable debugging for one loop. */
 
     /* Read x,y,z from console, and update thetas if there's a new one. */
-    read_xyz(&x_goal, &y_goal, &z_goal);
-    inverse_kin(x_goal, y_goal, z_goal);
+    read_xyz(xyz);
+    inverse_kin(xyz, sensor_goals, angle_goals);
 
-    xyz_goal[0] = x_goal;
-    xyz_goal[1] = y_goal;
-    xyz_goal[2] = z_goal;
+    xyz_goal[X] = xyz[X];
+    xyz_goal[Y] = xyz[Y];
+    xyz_goal[Z] = xyz[Z];
 
     for (int i = 0; i < 3; i++)
         goingHot[i] = 1;

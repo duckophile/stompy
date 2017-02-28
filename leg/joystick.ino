@@ -30,7 +30,7 @@ int toggle_joystick_mode(void)
 {
     joystick_mode = !joystick_mode;
 
-    disable_leg(); /* Stop moving the leg. */
+    pwms_off(); /* Stop moving the leg. */
     reset_current_location(); /* Current XYZ is new goal. */
 
     Serial.print("Joystick ");
