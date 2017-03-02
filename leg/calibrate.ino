@@ -33,6 +33,16 @@
  */
 
 /*
+Done with calibration.
+
+Low sensor readings:    hip     86      thigh   27      knee    818
+High sensor readings:   hip     728     thigh   224     knee    945
+
+This gives a range of 642 on the hip.
+
+*/
+
+/*
  * Move a joint associated with a specified valve until it stops
  * moving.
  *
@@ -42,7 +52,7 @@
  *
  * This should take a joint (0-2) and a direction.
  */
-int move_joint_all_the_way(int valve)
+int move_joint_all_the_way(int valve, int pwm_percent)
 {
     int out = 0;
     int no_change_count = 0;
@@ -53,7 +63,7 @@ int move_joint_all_the_way(int valve)
 
     sensor_num = valve;
     /* Sensor number is 0-2. */
-    if (sensor_num > 3) {
+    if (sensor_num >= 3) {
         sensor_num = sensor_num - 3;
         out = 1;	/* Sensor reading should be going up?  Hopefully? */
     } else {
@@ -71,17 +81,23 @@ int move_joint_all_the_way(int valve)
     Serial.println(sensorPin[sensor_num]);
 
     /* Set the PWM to move the joint. */
-    set_pwm(valve, 80);
+    set_pwm(valve, pwm_percent);
 
     /* Look for movement, wait until it stops. */
     sensor_reading = read_sensor(sensorPin[sensor_num]);
     last_sensor_reading = sensor_reading;
     /* 100 readings of 100ms each. */
-    for (i = 0;i < 100;i++) {
+    for (i = 0;i < 600;i++) {
         check_deadman();
 
         no_change_count++;
         sensor_reading = read_sensor(sensorPin[sensor_num]);
+
+        if (sensor_reading < sensor_lows[sensor_num])
+            sensor_lows[sensor_num] = sensor_reading;
+        if (sensor_reading > sensor_highs[sensor_num])
+            sensor_highs[sensor_num] = sensor_reading;
+
         /*
          * Save the largest or smallest sensor reading, depending on
          * which way the joint is moving.
@@ -118,28 +134,223 @@ int move_joint_all_the_way(int valve)
         delay(100);
     }
 
-    if (i == 100) {
+    if (i == 600) {
         Serial.println("Leg didn't stop moving!");
         return -1;
     } else
         return last_sensor_reading;
 }
 
+/* I need a function to test for movement. */
+
+#define ACCELERATING	0
+#define FULL_SPEED	1
+#define DECELERATING	2
+
+int exercise_joint(int joint, int direction, int pwm_percent)
+{
+    int sensor_reading;
+    int i;
+    int current_percent = 20;
+    int valve;
+    int start_micros = 0, stop_micros = 0;
+    int state = ACCELERATING;
+    int no_change_count = 0;
+    int last_sensor_reading = 0;
+
+    Serial.println("\n================================================================");
+    Serial.print(joint_names[joint]);
+    Serial.print(direction == IN ? " in " : " out ");
+    Serial.print(pwm_percent);
+    Serial.println(" percent PWM (which might be scaled by the PWM module.");
+
+    valve = joint + direction;
+
+    /* Sensor number is 0-2. */
+    if (direction == OUT)
+        Serial.println("Sensor value should be decreasing.");
+    else
+        Serial.println("Sensor value should be increasing.");
+
+    Serial.print("exercising valve ");
+    Serial.print(valve);
+    Serial.print(" PWM pin ");
+    Serial.print(pwm_pins[valve]);
+    Serial.print("\tsensor ");
+    Serial.print(joint);
+    Serial.print(" sensor pin ");
+    Serial.println(sensorPin[joint]);
+
+    /* Look for movement, wait until it stops. */
+    sensor_reading = read_sensor(sensorPin[joint]);
+    last_sensor_reading = sensor_reading;
+
+    for (i = 0;i < 1000;i++) {
+        check_deadman();
+
+        set_pwm(valve, current_percent);
+
+        /* Sleep 10ms. */
+        delay(10);
+
+        no_change_count++;
+
+        sensor_reading = read_sensor(sensorPin[joint]);
+
+        /* Check if the leg's moving. */
+        if (direction == IN) {
+            /* Joint going out, sensor reading going up. */
+            if (sensor_reading > last_sensor_reading) {
+                last_sensor_reading = sensor_reading;
+                no_change_count = 0;
+            }
+        } else {
+            /* Joint going in, sensor reading going down. */
+            if (sensor_reading < last_sensor_reading) {
+                last_sensor_reading = sensor_reading;
+                no_change_count = 0;
+            }
+        }
+
+        if (no_change_count > 100) {
+            Serial.println("\nJoint is not moving.\nAborting.\n");
+            break;
+        }
+
+        /* Check to see if we've passed a limit. */
+        if (direction == IN) {
+            /* Joint going out, sensor reading going up. */
+            if (sensor_reading > 720) {
+                Serial.println("Hit high end.");
+                break;
+            }
+            if ((sensor_reading > 628) && (state <= FULL_SPEED)) {
+                state = DECELERATING;
+                stop_micros = micros();
+                Serial.println("Decelerating.");
+            }
+        } else {
+            /* Joint going in, sensor reading going down. */
+            if (sensor_reading < 92) {
+                Serial.println("Hit low end.");
+                break;
+            }
+            if ((sensor_reading < 186) && (state <= FULL_SPEED)) {
+                state = DECELERATING;
+                stop_micros = micros();
+                Serial.println("Decelerating.");
+            }
+        }
+
+        switch(state) {
+        case ACCELERATING:
+            Serial.print('+');
+            current_percent++;
+            if (current_percent == pwm_percent) {
+                state = FULL_SPEED;
+                Serial.println("Hit full PWM.");
+                start_micros = micros();
+            }
+            break;
+
+        case FULL_SPEED:
+            Serial.print(' ');
+            break;
+
+        case DECELERATING:
+            Serial.print('-');
+            current_percent--;
+            if (current_percent < 60)
+                current_percent = 60;
+            break;
+        }
+
+        Serial.print(i);
+        Serial.print("\t");
+        Serial.print(sensor_reading);
+        Serial.print("\t");
+        Serial.print(current_percent);
+        Serial.println("");
+
+        if (Serial.available() > 0) {
+            Serial.read();
+            Serial.println("Aborted by keypress.");
+            break;
+        }
+
+    }
+
+    set_pwm(valve, 0);
+
+    Serial.println("Done.");
+    Serial.print("Total time at full speed: ");
+    Serial.println((float)(stop_micros - start_micros) / 1000000.0);
+
+    Serial.println("\n================================================================\n");
+    return 0;
+}
+
 int calibrate(void)
 {
+    int i;
+
+    set_pwm_scale(100);
+
     enable_leg();
 
     Serial.println("Retracting thigh.");
-    move_joint_all_the_way(THIGHPWM_UP);
+    move_joint_all_the_way(THIGHPWM_UP, 50);
 
     Serial.println("Retracting knee.");
     /* Move knee up. */
 /*    move_joint_all_the_way(KNEEPWM_RETRACT); OOPS!  This appears to be backwards? */
-    move_joint_all_the_way(KNEEPWM_EXTEND);
+    move_joint_all_the_way(KNEEPWM_EXTEND, 50);
+/*    move_joint_all_the_way(KNEEPWM_RETRACT); Need tent corner removed for this. */
+
+#if 0
+    Serial.println("Testing hip limits.\n");
+    move_joint_all_the_way(HIPPWM_FORWARD, 40);
+    move_joint_all_the_way(HIPPWM_REVERSE, 40);
+#endif
+
+
+    Serial.println("Going into exercise loop:");
+    for (i = 60;i < 100;i += 5) {
+        Serial.println("Moving joint to position.");
+        move_joint_all_the_way(HIPPWM_FORWARD, 70);
+
+        Serial.println("");
+        exercise_joint(HIP, IN, i);
+
+        Serial.println("");
+        exercise_joint(HIP, OUT, i);
+    }
+
+    set_pwm_scale(60);
 
     pwms_off();
 
+    Serial.println("");
     Serial.println("Done with calibration.");
+    Serial.println("");
+
+    Serial.print("Low sensor readings:  ");
+    for (i = 0;i < 3;i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        Serial.print(sensor_lows[i]);
+    }
+    Serial.println("");
+    Serial.print("High sensor readings: ");
+    for (i = 0;i < 3;i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        Serial.print(sensor_highs[i]);
+    }
+    Serial.println("");
+    Serial.println("");
 
     return 0;
 }

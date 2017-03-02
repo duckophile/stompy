@@ -39,6 +39,27 @@ int toggle_joystick_mode(void)
     return 0;
 }
 
+/* Print out the joystick readings for joystick calibration. */
+int func_jtest(void)
+{
+    int i;
+    int val;
+
+    while (1) {
+        for (i = 0;i < 3;i++) {
+            val = read_sensor(joystick_pins[i]);
+            Serial.print(val);
+            Serial.print('\t');
+        }
+        Serial.println("");
+        delay(100);
+        if (Serial.available() > 0)
+            break;
+    }
+
+    return 0;
+}
+
 /*
  * This should move the foot goal x,y,z, and the foot should move to
  * match it.

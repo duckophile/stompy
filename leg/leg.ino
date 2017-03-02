@@ -67,6 +67,7 @@
 #define KNEEPWM_RETRACT		2
 #define HIPPWM_REVERSE		3
 #define THIGHPWM_DOWN		4
+/* XXX fixme:  Knee extend and retract appear to be reversed. */
 #define KNEEPWM_EXTEND		5
 
 //These are mapped to the right front leg
@@ -97,6 +98,10 @@ const int down_pwms[3] = {HIPPWM_REVERSE_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND
 const int pwm_pins[6]  = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN,
                           HIPPWM_REVERSE_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
 #endif
+
+/* These are used to convert an 0-2 joint number to a valve number. */
+#define OUT	0      /* Sensor value decreasing. */
+#define IN	3      /* Sensor value increasing. */
 
 #define DEADMAN_PIN		0
 
@@ -132,6 +137,9 @@ float angle_goals[3]   = {0,0,0};
 int goingHot[3]        = {0,0,0};
 
 int sensor_readings[3] = {0,0,0};
+
+int sensor_highs[3]    = {    0,     0,     0};
+int sensor_lows[3]     = {65536, 65536, 65536};
 
 /*
  * Angles in degrees -
@@ -436,6 +444,73 @@ int func_joystick(void)
 }
 
 /*
+ * XXX todo:  Save a count of how many of each reading there are.
+ */
+int func_sensors(void)
+{
+    int n;
+    int i;
+    int sense_highs[3]    = {    0,     0,     0};
+    int sense_lows[3]     = {65536, 65536, 65536};
+    int readings[1024];
+
+    for (i = 0;i < 1024;i++)
+        readings[i] = 0;
+
+    Serial.println("");
+    Serial.print("Sensors:");
+    while (1) {
+        for (i = 0; i < 3; i++) {
+/*            n = analogRead(sensorPin[i]);*/
+            n = read_sensor(sensorPin[i]);
+            readings[n]++;
+            if (n < sense_lows[i])
+                sense_lows[i] = n;
+            if (n > sense_highs[i])
+                sense_highs[i] = n;
+
+            Serial.print("\t");
+            Serial.print(n);
+        }
+        Serial.println("");
+
+        if (Serial.available() > 0)
+            break;
+    }
+
+    Serial.print(i);
+    Serial.println("samples.");
+    for (i = 0;i < 1024;i++) {
+        if (readings[i] != 0) {
+            Serial.print(i);
+            Serial.print("\t = ");
+            Serial.println(readings[i]);
+        }
+    }
+
+    Serial.print("Low sensor readings:  ");
+    for (i = 0;i < 3;i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        Serial.print(sensor_lows[i]);
+    }
+    Serial.println("");
+    Serial.print("High sensor readings: ");
+    for (i = 0;i < 3;i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        Serial.print(sensor_highs[i]);
+    }
+    Serial.println("");
+    Serial.println("");
+
+    return 0;
+}
+
+
+/*
  * Stick the leg straight out and wiggle it up and down in hopes of
  * making it easier for air to get out.
  */
@@ -467,16 +542,18 @@ struct {
     { "deadman",   func_deadman   }, /* Ignore the deadman. */
     { "dbg",       func_dbg       }, /* Enable debug once. */
     { "debug",     func_debug     },
-    { "freq",      func_none      }, /* Set PWM frequency. */
-    { "help",      func_help      },
     { "dither",    func_none      }, /* Set the dither amount. */
-    { "scale",     func_scale     }, /* Set max PWM value. */
+    { "freq",      func_none      }, /* Set PWM frequency. */
     { "go",        func_go        }, /* goto given x, y, z. */
+    { "help",      func_help      },
     { "home",      func_none      }, /* Some neutral position?  Standing positioon maybe? */
     { "info",      func_info      },
+    { "jtest",     func_jtest     }, /* Print joystick values for calibration. */
+    { "scale",     func_scale     }, /* Set max PWM value. */
     { "joystick",  func_joystick  }, /* Enable jpoystick mode. */
     { "park",      func_none      }, /* Move leg to parked position. */
     { "pwm",       func_pwm       }, /* Set a PWM. */
+    { "sensors",   func_sensors   }, /* Continuously read and print sensor readings. */
     { "stop",      func_stop      }, /* Stop moving. */
     { "where",     func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,        NULL           }
@@ -869,11 +946,18 @@ void print_reading(int i, int sensor, int goal, const char *joint, const char *a
 /* Reads the current leg position sensors. */
 void read_sensors(int *sensors)
 {
+    int n;
+
     DEBUG("Sensors:");
     for (int i = 0; i < 3; i++) {
         /* Read sensors even if we're not moving. */
 /*        sensor_readings[i] = analogRead(sensorPin[i]);*/
-        sensors[i] = read_sensor(sensorPin[i]);
+        n = read_sensor(sensorPin[i]);
+        sensors[i] = n;
+        if (n < sensor_lows[i])
+            sensor_lows[i] = n;
+        if (n > sensor_highs[i])
+            sensor_highs[i] = n;
         DEBUG("\t");
         DEBUG(joint_names[i]);
         DEBUG("\t");
