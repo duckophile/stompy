@@ -147,18 +147,19 @@ int move_joint_all_the_way(int valve, int pwm_percent)
 #define FULL_SPEED	1
 #define DECELERATING	2
 
-int exercise_joint(int joint, int direction, int pwm_percent)
+int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
 {
     int sensor_reading;
     int i;
     int current_percent = 20;
     int valve;
-    int start_micros = 0, stop_micros = 0;
+    int start_micros = 0;
+    int stop_micros = 0;
     int state = ACCELERATING;
     int no_change_count = 0;
     int last_sensor_reading = 0;
 
-    Serial.println("\n================================================================");
+    Serial.print("\n#================================================================\n# ");
     Serial.print(joint_names[joint]);
     Serial.print(direction == IN ? " in " : " out ");
     Serial.print(pwm_percent);
@@ -167,28 +168,33 @@ int exercise_joint(int joint, int direction, int pwm_percent)
     valve = joint + direction;
 
     /* Sensor number is 0-2. */
-    if (direction == OUT)
-        Serial.println("Sensor value should be decreasing.");
-    else
-        Serial.println("Sensor value should be increasing.");
+    if (verbose) {
+        if (direction == OUT)
+            Serial.println("# Sensor value should be decreasing.");
+        else
+            Serial.println("# Sensor value should be increasing.");
 
-    Serial.print("exercising valve ");
-    Serial.print(valve);
-    Serial.print(" PWM pin ");
-    Serial.print(pwm_pins[valve]);
-    Serial.print("\tsensor ");
-    Serial.print(joint);
-    Serial.print(" sensor pin ");
-    Serial.println(sensorPin[joint]);
+        Serial.print("# exercising valve ");
+        Serial.print(valve);
+        Serial.print(" PWM pin ");
+        Serial.print(pwm_pins[valve]);
+        Serial.print("\tsensor ");
+        Serial.print(joint);
+        Serial.print(" sensor pin ");
+        Serial.println(sensorPin[joint]);
+    }
 
     /* Look for movement, wait until it stops. */
     sensor_reading = read_sensor(sensorPin[joint]);
     last_sensor_reading = sensor_reading;
 
-    for (i = 0;i < 1000;i++) {
+    for (i = 0;i < 10000;i++) {
         check_deadman();
 
-        set_pwm(valve, current_percent);
+        if ((deadMan != 0) || (!deadman_forced != 0)) {
+/*            set_pwm(valve, current_percent);*/
+            analogWrite(pwm_pins[valve], (current_percent * 1024) / 100);
+        }
 
         /* Sleep 10ms. */
         delay(10);
@@ -211,9 +217,10 @@ int exercise_joint(int joint, int direction, int pwm_percent)
                 no_change_count = 0;
             }
         }
-
-        if (no_change_count > 100) {
-            Serial.println("\nJoint is not moving.\nAborting.\n");
+        if (no_change_count > 150) {
+            Serial.print("\n# Joint is not moving at ");
+            Serial.print(current_percent);
+            Serial.println("% pwm.\nAborting.\n");
             break;
         }
 
@@ -221,60 +228,76 @@ int exercise_joint(int joint, int direction, int pwm_percent)
         if (direction == IN) {
             /* Joint going out, sensor reading going up. */
             if (sensor_reading > 720) {
-                Serial.println("Hit high end.");
+                Serial.println("# Hit high end.");
                 break;
             }
             if ((sensor_reading > 628) && (state <= FULL_SPEED)) {
                 state = DECELERATING;
                 stop_micros = micros();
-                Serial.println("Decelerating.");
+                Serial.println("# Decelerating.");
             }
         } else {
             /* Joint going in, sensor reading going down. */
             if (sensor_reading < 92) {
-                Serial.println("Hit low end.");
+                Serial.println("# Hit low end.");
                 break;
             }
             if ((sensor_reading < 186) && (state <= FULL_SPEED)) {
                 state = DECELERATING;
                 stop_micros = micros();
-                Serial.println("Decelerating.");
+                Serial.println("# Decelerating.");
             }
         }
 
         switch(state) {
         case ACCELERATING:
-            Serial.print('+');
-            current_percent++;
+            int inc;
+            /*
+             * XXX fixme: Acceleration is wrong.  It should start out
+             * slow and get faster, rather than vice versa.
+             */
+            inc = (pwm_percent - current_percent) / 10;
+            if (inc == 0)
+                inc = 1;
+            current_percent += inc;
             if (current_percent == pwm_percent) {
                 state = FULL_SPEED;
-                Serial.println("Hit full PWM.");
+                Serial.println("# Hit full PWM.");
                 start_micros = micros();
             }
             break;
-
         case FULL_SPEED:
-            Serial.print(' ');
             break;
-
         case DECELERATING:
-            Serial.print('-');
-            current_percent--;
-            if (current_percent < 60)
-                current_percent = 60;
+            int dec;
+            dec = (current_percent - 35) / 10;
+            if (dec == 0)
+                dec = 1;
+            current_percent -= dec;
+            if (current_percent < 35)
+                current_percent = 35;
             break;
         }
 
-        Serial.print(i);
-        Serial.print("\t");
-        Serial.print(sensor_reading);
-        Serial.print("\t");
-        Serial.print(current_percent);
-        Serial.println("");
+        if (verbose) {
+/*            if ((state != FULL_SPEED) || ((i % 10) == 0)) {*/
+            if ((state != FULL_SPEED)) {
+                Serial.print(i);
+                Serial.print('\t');
+                Serial.print(sensor_reading);
+                Serial.print('\t');
+                Serial.print(current_percent);
+/*
+                Serial.print('\t');
+                Serial.print((current_percent * 1024) / 100);
+*/
+                Serial.println("");
+            }
+        }
 
         if (Serial.available() > 0) {
             Serial.read();
-            Serial.println("Aborted by keypress.");
+            Serial.println("# Aborted by keypress.");
             break;
         }
 
@@ -282,11 +305,12 @@ int exercise_joint(int joint, int direction, int pwm_percent)
 
     set_pwm(valve, 0);
 
-    Serial.println("Done.");
-    Serial.print("Total time at full speed: ");
-    Serial.println((float)(stop_micros - start_micros) / 1000000.0);
-
-    Serial.println("\n================================================================\n");
+    if (verbose) {
+        Serial.println("# Done.");
+        Serial.print("# Total time at full speed: ");
+        Serial.println((float)(stop_micros - start_micros) / 1000000.0);
+    }
+    Serial.println("\n#================================================================\n");
     return 0;
 }
 
@@ -298,32 +322,40 @@ int calibrate(void)
 
     enable_leg();
 
-    Serial.println("Retracting thigh.");
-    move_joint_all_the_way(THIGHPWM_UP, 50);
+    Serial.println("# Retracting thigh.");
+    move_joint_all_the_way(THIGHPWM_UP, 30);
 
-    Serial.println("Retracting knee.");
+    Serial.println("# Retracting knee.");
     /* Move knee up. */
 /*    move_joint_all_the_way(KNEEPWM_RETRACT); OOPS!  This appears to be backwards? */
-    move_joint_all_the_way(KNEEPWM_EXTEND, 50);
+    move_joint_all_the_way(KNEEPWM_EXTEND, 30);
 /*    move_joint_all_the_way(KNEEPWM_RETRACT); Need tent corner removed for this. */
 
 #if 0
-    Serial.println("Testing hip limits.\n");
-    move_joint_all_the_way(HIPPWM_FORWARD, 40);
-    move_joint_all_the_way(HIPPWM_REVERSE, 40);
+    Serial.println("# Testing hip limits.\n");
+    move_joint_all_the_way(HIPPWM_FORWARD, 30);
+    move_joint_all_the_way(HIPPWM_REVERSE, 30);
 #endif
 
+    Serial.println("# Done, waiting...");
+    delay(1000);
 
-    Serial.println("Going into exercise loop:");
-    for (i = 60;i < 100;i += 5) {
-        Serial.println("Moving joint to position.");
-        move_joint_all_the_way(HIPPWM_FORWARD, 70);
+    Serial.println("# Going into exercise loop:");
+    for (i = 20;i < 100;i += 5) {
+        Serial.println("# Moving joint to position.");
+        exercise_joint(HIP, OUT, 50, 0);
+        Serial.println("# Done , waiting...");
+        delay(1000);
 
         Serial.println("");
-        exercise_joint(HIP, IN, i);
+        exercise_joint(HIP, IN, i, 1);
+        Serial.println("# Done, waiting...");
+        delay(1000);
 
         Serial.println("");
-        exercise_joint(HIP, OUT, i);
+        exercise_joint(HIP, OUT, i, 1);
+        Serial.println("# Done, waiting...");
+        delay(1000);
     }
 
     set_pwm_scale(60);
@@ -331,10 +363,10 @@ int calibrate(void)
     pwms_off();
 
     Serial.println("");
-    Serial.println("Done with calibration.");
+    Serial.println("# Done with calibration.");
     Serial.println("");
 
-    Serial.print("Low sensor readings:  ");
+    Serial.print("# Low sensor readings:  ");
     for (i = 0;i < 3;i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
@@ -342,7 +374,7 @@ int calibrate(void)
         Serial.print(sensor_lows[i]);
     }
     Serial.println("");
-    Serial.print("High sensor readings: ");
+    Serial.print("# High sensor readings: ");
     for (i = 0;i < 3;i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
