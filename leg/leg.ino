@@ -469,10 +469,12 @@ int func_sensors(void)
             if (n > sense_highs[i])
                 sense_highs[i] = n;
 
+/*
             Serial.print("\t");
             Serial.print(n);
+*/
         }
-        Serial.println("");
+/*        Serial.println("");*/
 
         if (Serial.available() > 0)
             break;
