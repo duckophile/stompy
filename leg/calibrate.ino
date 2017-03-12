@@ -55,6 +55,23 @@ This gives a range of 642 on the hip.
 
 */
 
+int check_keypress(void)
+{
+    int ch;
+
+    if (Serial.available() > 0) {
+        ch = Serial.read();
+        if (ch == 3) {
+            set_pwm_scale(60);
+            pwms_off();
+        }
+        Serial.println("# Aborted by keypress.");
+        return 1;
+    }
+
+    return 0;
+}
+
 /*
  * Move a joint associated with a specified valve until it stops
  * moving.
@@ -83,7 +100,7 @@ int move_joint_all_the_way(int valve, int pwm_percent)
     } else {
         out = 0;
         Serial.println("Sensor value should be dropping.");
-   }
+    }
 
     Serial.print("Calibrating valve ");
     Serial.print(valve);
@@ -176,6 +193,8 @@ int move_joint_all_the_way(int valve, int pwm_percent)
  * And detect movement based on total sensor movement rather than just
  * some number of iterations without moving?  Or at least report total
  * sensor movement.
+ *
+ * And, try different PWM frequencies.
  */
 
 int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
@@ -185,7 +204,9 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
     int current_percent = LOW_ACCEL_PERCENT;
     int valve;
     int start_micros = 0;
+    int start_sensor = 0;
     int stop_micros = 0;
+    int stop_sensor = 0;
     int state = ACCELERATING;
     int no_change_count = 0;
     int last_sensor_reading = 0;
@@ -193,6 +214,8 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
     float inc;
     float accel_percent = LOW_ACCEL_PERCENT;
     int low_percent = LOW_DECEL_PERCENT;
+    int aborted = 0;
+    int speed = 0;
 
     if (current_percent < pwm_percent)
         current_percent = pwm_percent;
@@ -272,6 +295,7 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
             Serial.print("\n# Joint is not moving at ");
             Serial.print(current_percent);
             Serial.println("% pwm.\nAborting.\n");
+            aborted = 1;
             break;
         }
 
@@ -302,6 +326,7 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
             if ((sensor_reading < 186) && (state <= FULL_SPEED)) {
                 state = DECELERATING;
                 stop_micros = micros();
+                stop_sensor = sensor_reading;
                 Serial.println("# Decelerating.");
                 inc = (current_percent - 40) / 30;
                 if (inc < 1)
@@ -321,6 +346,7 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
                 state = FULL_SPEED;
                 Serial.println("# Hit full PWM.");
                 start_micros = micros();
+                start_sensor = sensor_reading;
             }
             break;
         case FULL_SPEED:
@@ -353,12 +379,10 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
             }
         }
 
-        if (Serial.available() > 0) {
-            Serial.read();
-            Serial.println("# Aborted by keypress.");
+        if (check_keypress()) {
+            aborted = 1;
             break;
         }
-
     }
 
     analogWrite(pwm_pins[valve], 0);
@@ -366,18 +390,31 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
     set_pwm(valve, 0);
 
     if (verbose) {
+        float total_micros;
+        float total_sensor;
+
+        total_micros = (float)(stop_micros - start_micros);
+        total_sensor = (float)abs(stop_sensor - start_sensor);
+        speed = total_micros / total_sensor;
+
         Serial.println("# Done.");
         Serial.print("# Total time at full speed: ");
         Serial.println((float)(stop_micros - start_micros) / 1000000.0);
-        Serial.print("# Final sensor readin: ");
+        Serial.print("# Total sensor movement: ");
+        Serial.println(abs(stop_sensor - start_sensor));
+        Serial.print("# Speed - microseconds / sensor unit at ");
+        Serial.print(pwm_percent);
+        Serial.print("% pwm: ");
+        Serial.println(speed);
+        Serial.print("# Final sensor reading: ");
         Serial.println(sensor_reading = read_sensor(sensorPin[joint]));
     }
     Serial.println("\n#================================================================\n");
 
-    if (no_change_count > NO_CHANGE_LIMIT)
+    if ((no_change_count > NO_CHANGE_LIMIT) || aborted)
         return -1;
     else
-        return 0;
+        return speed;
 }
 
 int calibrate(void)
