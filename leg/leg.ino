@@ -56,6 +56,7 @@
 #define KNEE_SENSOR_PIN		17
 #define THIGH_SENSOR_PIN	18
 #define HIP_SENSOR_PIN		20
+#define COMPLIANT_SENSOR_PIN	XX
 
 /*
  * XXX fixme: This should be ordered such that the first three have
@@ -80,26 +81,24 @@
 
 /*
  * *_up and *_down are poor names.
- *
- * These are ordered for the easiest joystick mapping.
- *
- * SHIT!  I reordered these to match the joystick, but that probably
- * messed up positional!
  */
 #if 1
-/* This is the old ordering. */
 const int up_pwms[3]   = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_EXTEND_PIN};
 const int down_pwms[3] = {HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_RETRACT_PIN};
 const int pwm_pins[6]  = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_EXTEND_PIN,
                           HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_RETRACT_PIN};
 #else
+/* This ordering was to match the joystick, but messed up the kinematics, */
 const int up_pwms[3]   = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN};
 const int down_pwms[3] = {HIPPWM_REVERSE_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
 const int pwm_pins[6]  = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN,
                           HIPPWM_REVERSE_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
 #endif
 
-/* These are used to convert an 0-2 joint number to a valve number. */
+/*
+  * These are used to convert an 0-2 joint number to a valve number in
+  * the pwm_pins[] array.
+  */
 #define OUT	0      /* Sensor value decreasing. */
 #define IN	3      /* Sensor value increasing. */
 
@@ -119,9 +118,10 @@ static int periodic_debug_flag = 0;
 #define DEBUG   if(debug_flag)Serial.print
 #define DEBUGLN if(debug_flag)Serial.println
 
-#define HIP	0
-#define THIGH	1
-#define KNEE	2
+#define HIP		0
+#define THIGH		1
+#define KNEE		2
+#define COMPLIANT	3
 
 const char *joint_names[]        = {"hip",     "thigh", "knee"};
 const char *joint_up_actions[]   = {"back",    "up",    "out"};
@@ -140,6 +140,10 @@ int sensor_readings[3] = {0,0,0};
 
 int sensor_highs[3]    = {    0,     0,     0};
 int sensor_lows[3]     = {65536, 65536, 65536};
+
+/* The minimum PWM speed at which a valve can move a joint. */
+/* XXX fixme:  These should be stored in flash. */
+int valve_min_pwm_speed[6] = {-1, -1, -1, -1, -1, -1};
 
 /*
  * Angles in degrees -
