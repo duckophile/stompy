@@ -11,10 +11,6 @@
  *   stored in flash.
  * - Measure sensor noise.
  *
- * How much PWM to move leg slowly?
- *
- * I should have adjustable slow start and deceleration.
- *
  * Sensor jitter can be collected in motion by looking for sensor
  * values indicating movement opposite to actual movement.  This
  * should give a best guess for a "close enough" value.
@@ -35,14 +31,34 @@
 /*
  * Data to save in flash:
  *
- * For each joint:
- * - High and low sensor limits.
- * - Minimum PWM at which joint moves.
+ * For each valve:
  * - PWM-to-speed mappings.
+ * - Minimum PWM at which joint moves.
  * - Temperature compensation data (?).
+ * For each sensor (4 sensors, including compliant link)
+ * - High and low sensor limits.
  * - Manufacturing tolerance compensation - compensation for joint
  *   differences from leg-to-leg.
  *
+ */
+
+/* 500, 1000, 1500, 2000, 2500 PSI */
+#define NR_PRESSURES	5
+
+#define NR_SENSORS	4
+
+#define NR_JOINTS	6
+
+typedef struct joint_info {
+    uint16_t low_sensor_reading;	/* Lowest sensor reading seen. */
+    uint16_t high_sensor_reading;	/* Highest sensor reading seen. */
+    uint8_t low_pwm_movement[NR_PRESSURES]; /* Lowest PWM setting that gives movement. */
+    /* The joint speeds probably need to be per-pressure. */
+    uint16_t joint_speed[10];		/* Speed, 10-100% pwm, in 10% increments. */
+} joint_info_t;
+
+/*
+ * I need a map of speed to PWM value.
  */
 
 /*
@@ -81,6 +97,8 @@ int check_keypress(void)
  * The valve number is 0-5.
  *
  * This should take a joint (0-2) and a direction.
+ *
+ * This is fairly crude.
  */
 int move_joint_all_the_way(int valve, int pwm_percent)
 {
@@ -188,13 +206,29 @@ int move_joint_all_the_way(int valve, int pwm_percent)
 #define NO_CHANGE_LIMIT		200
 
 /*
- * I need to be able to tell this function to quit once it's detected the leg moving.
+ * Move a joint in a direction at a specific PWM percentage.
+ * Accelerate and decelerate smoothly(ish) at the ends of travel,
+ * detect whether or not the joint's moving, record high and low
+ * sensor values, etc.
+ *
+ * This is currently a bit scatterbrained.
+ *
+ * XXX fixme:  The acceleration and decceleration need work!
+ *
+ * I need to be able to tell this function to quit once it's detected
+ * the leg moving.
  *
  * And detect movement based on total sensor movement rather than just
  * some number of iterations without moving?  Or at least report total
  * sensor movement.
  *
  * And, try different PWM frequencies.
+ *
+ * And, I need some way to overcome stiction.  Maybe every time the
+ * PWM is changed it should be changed to a radically different value
+ * (0 or 100?) for a 100th of a second then changed to the desired
+ * value?
+ *
  */
 
 int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
@@ -214,8 +248,11 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
     float inc;
     float accel_percent = LOW_ACCEL_PERCENT;
     int low_percent = LOW_DECEL_PERCENT;
-    int aborted = 0;
-    int speed = 0;
+    int failed = 0;
+    int speed;
+    int total_micros;
+    int total_sensor;
+
 
     if (current_percent < pwm_percent)
         current_percent = pwm_percent;
@@ -295,7 +332,7 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
             Serial.print("\n# Joint is not moving at ");
             Serial.print(current_percent);
             Serial.println("% pwm.\nAborting.\n");
-            aborted = 1;
+            failed = 1;
             break;
         }
 
@@ -380,7 +417,7 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
         }
 
         if (check_keypress()) {
-            aborted = 1;
+            failed = 1;
             break;
         }
     }
@@ -389,41 +426,104 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
 
     set_pwm(valve, 0);
 
+    total_micros = stop_micros - start_micros;
+    total_sensor = abs(stop_sensor - start_sensor);
+    speed = total_micros / total_sensor;
+
     if (verbose) {
-        float total_micros;
-        float total_sensor;
-
-        total_micros = (float)(stop_micros - start_micros);
-        total_sensor = (float)abs(stop_sensor - start_sensor);
-        speed = total_micros / total_sensor;
-
         Serial.println("# Done.");
-        Serial.print("# Total time at full speed: ");
-        Serial.println((float)(stop_micros - start_micros) / 1000000.0);
+
+        Serial.print("# Start sensor reading: ");
+        Serial.println(start_sensor);
+        Serial.print("# End sensor reading: ");
+        Serial.println(stop_sensor);
+
+        Serial.print("# Total seconds at full speed: ");
+        Serial.println((float)total_micros / 1000000.0);
+
         Serial.print("# Total sensor movement: ");
-        Serial.println(abs(stop_sensor - start_sensor));
+        Serial.println(total_sensor);
+
         Serial.print("# Speed - microseconds / sensor unit at ");
         Serial.print(pwm_percent);
         Serial.print("% pwm: ");
         Serial.println(speed);
-        Serial.print("# Final sensor reading: ");
-        Serial.println(sensor_reading = read_sensor(sensorPin[joint]));
+
+        if (failed)
+            Serial.println("# **************** FAILED ****************\n");
     }
     Serial.println("\n#================================================================\n");
 
-    if ((no_change_count > NO_CHANGE_LIMIT) || aborted)
+    if (failed)
         return -1;
     else
         return speed;
 }
 
+
+/*
+ * Find the lowest PWM value at which a joint moves.
+ *
+ * The PWM percentage is returned.
+ */
+
+/* Start testing for movement at this percentage. */
+#define DISCOVERY_START_PWM	30
+
+int find_joint_first_movement(int joint, int direction)
+{
+    float try_pwm;
+    float pwm_inc;
+    int other_direction;
+    int rc;
+    int last_movement_percent = -1;
+
+    if (direction == IN)
+        other_direction = OUT;
+    else
+        other_direction = IN;
+
+    try_pwm = DISCOVERY_START_PWM;
+    pwm_inc = try_pwm;
+    do {
+        pwm_inc = pwm_inc / 2;
+
+        Serial.println("# Moving joint to position.");
+        exercise_joint(joint, other_direction, 50, 0);
+        Serial.println("# Done , waiting...");
+        delay(1000);
+
+        Serial.println("");
+        rc = exercise_joint(joint, direction, (int)try_pwm, 1);
+        Serial.println("# Done , waiting...");
+        delay(1000);
+
+        Serial.print("# ");
+        Serial.print(joint_names[joint]);
+        if (rc == -1) {
+            try_pwm += pwm_inc; /* Didn't move, so go faster next time. */
+            Serial.print(" didn't move");
+        } else {
+            last_movement_percent = (int)try_pwm;
+            try_pwm -= pwm_inc; /* Did move, so go slower next time. */
+            Serial.print(" did move");
+        }
+        Serial.print(direction == IN ? " in" : " out");
+        Serial.print(" at ");
+        Serial.print((int)try_pwm);
+        Serial.println(" percent.");
+
+    } while (pwm_inc >= 1);
+
+    return last_movement_percent;
+}
+
+
 int calibrate(void)
 {
     int i;
-    int rc;
     int first_move_in = -1;
     int first_move_out = -1;
-    int start;
 
     set_pwm_scale(100);
 
@@ -447,103 +547,11 @@ int calibrate(void)
     Serial.println("# Done, waiting...");
     delay(1000);
 
-    Serial.println("# Discovering low PWM limit for in:");
-    for (i = 30;i <= 50;i += 5) {
-        Serial.println("# Moving joint to position.");
-        exercise_joint(HIP, OUT, 50, 0);
-        Serial.println("# Done , waiting...");
-        delay(1000);
+    Serial.println("# Discovering low PWM limit for HIP IN:");
+    first_move_in = find_joint_first_movement(HIP, IN);
 
-        Serial.println("");
-        rc = exercise_joint(HIP, IN, i, 1);
-        if (rc == -1) {
-            Serial.println("Joint did not move.");
-        } else {
-            if (first_move_in == -1) {
-                Serial.print("# Joint moved in at ");
-                Serial.print(i);
-                Serial.println(" percent");
-                first_move_in = i;
-                break;
-            }
-        }
-        Serial.println("# Done, waiting...");
-        delay(1000);
-    }
-
-    start = first_move_in - 10;
-    first_move_in = -1;
-    for (i = start;i <= start + 10;i++) {
-        Serial.println("# Moving joint to position.");
-        exercise_joint(HIP, OUT, 50, 0);
-        Serial.println("# Done , waiting...");
-        delay(1000);
-
-        Serial.println("");
-        rc = exercise_joint(HIP, IN, i, 1);
-        if (rc == -1) {
-            Serial.println("Joint did not move.");
-        } else {
-            if (first_move_in == -1) {
-                Serial.print("# Joint moved in at ");
-                Serial.print(i);
-                Serial.println(" percent");
-                first_move_in = i;
-                break;
-            }
-        }
-        Serial.println("# Done, waiting...");
-        delay(1000);
-    }
-
-    Serial.println("# Discovering low PWM limit for out:");
-    for (i = 30;i <= 50;i += 5) {
-        Serial.println("# Moving joint to position.");
-        exercise_joint(HIP, IN, 50, 0);
-        Serial.println("# Done , waiting...");
-        delay(1000);
-
-        Serial.println("");
-        rc = exercise_joint(HIP, OUT, i, 1);
-        if (rc == -1) {
-            Serial.println("Joint did not move.");
-        } else {
-            if (first_move_out == -1) {
-                Serial.print("# Joint moved out at ");
-                Serial.print(i);
-                Serial.println(" percent");
-                first_move_out = i;
-                break;
-            }
-        }
-        Serial.println("# Done, waiting...");
-        delay(1000);
-    }
-
-    start = first_move_out - 10;
-    first_move_out = -1;
-    for (i = start;i <= start + 10;i++) {
-        Serial.println("# Moving joint to position.");
-        exercise_joint(HIP, IN, 50, 0);
-        Serial.println("# Done , waiting...");
-        delay(1000);
-
-        Serial.println("");
-        rc = exercise_joint(HIP, OUT, i, 1);
-        if (rc == -1) {
-            Serial.println("Joint did not move.");
-        } else {
-            if (first_move_out == -1) {
-                Serial.print("# Joint moved out at ");
-                Serial.print(i);
-                Serial.println(" percent");
-                first_move_out = i;
-                break;
-            }
-        }
-        Serial.println("# Done, waiting...");
-        delay(1000);
-    }
+    Serial.println("# Discovering low PWM limit for HIP OUT:");
+    first_move_out = find_joint_first_movement(HIP, OUT);
 
     set_pwm_scale(60);
 
