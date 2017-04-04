@@ -1,5 +1,11 @@
 /* ; -*- mode: C ;-*- */
 
+#include <EEPROM.h>
+
+#include "pins.h"
+
+#include "leg-info.h"
+
 /*
  * Things I want to store in flash:
  *
@@ -53,10 +59,21 @@
  *  degrees = (radians * 4068) / 71
  */
 
-#define KNEE_SENSOR_PIN		17
-#define THIGH_SENSOR_PIN	18
-#define HIP_SENSOR_PIN		20
-#define COMPLIANT_SENSOR_PIN	XX
+#define ANALOG_BITS	10
+#define PWM_BITS	ANALOG_BITS
+#define PWM_MAX		((1 << PWM_BITS) - 1)
+#define ANALOG_MAX	((1 << ANALOG_BITS) - 1)
+
+static int debug_flag = 0;  /* Enable verbose output. */
+static int old_debug_flag = 0;
+static int periodic_debug_flag = 0;
+#define DEBUG   if(debug_flag)Serial.print
+#define DEBUGLN if(debug_flag)Serial.println
+
+#define HIP		0
+#define THIGH		1
+#define KNEE		2
+#define COMPLIANT	3
 
 /*
  * XXX fixme: This should be ordered such that the first three have
@@ -70,14 +87,6 @@
 #define THIGHPWM_DOWN		4
 /* XXX fixme:  Knee extend and retract appear to be reversed. */
 #define KNEEPWM_EXTEND		5
-
-//These are mapped to the right front leg
-#define THIGHPWM_DOWN_PIN	3
-#define THIGHPWM_UP_PIN		4
-#define KNEEPWM_RETRACT_PIN	5
-#define KNEEPWM_EXTEND_PIN	6
-#define HIPPWM_FORWARD_PIN	9
-#define HIPPWM_REVERSE_PIN	10
 
 /*
  * *_up and *_down are poor names.
@@ -102,33 +111,9 @@ const int pwm_pins[6]  = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRAC
 #define OUT	0      /* Sensor value decreasing. */
 #define IN	3      /* Sensor value increasing. */
 
-#define DEADMAN_PIN		0
-
-//enable pins for motor drivers
-#define ENABLE_PIN		1
-#define ENABLE_PIN_HIP		2
-
-#define M1FB_PIN		21
-#define M2FB_PIN		22
-#define M1FB_HIP_PIN		23
-
-static int debug_flag = 0;  /* Enable verbose output. */
-static int old_debug_flag = 0;
-static int periodic_debug_flag = 0;
-#define DEBUG   if(debug_flag)Serial.print
-#define DEBUGLN if(debug_flag)Serial.println
-
-#define HIP		0
-#define THIGH		1
-#define KNEE		2
-#define COMPLIANT	3
-
-const char *joint_names[]        = {"hip",     "thigh", "knee"};
+const char *joint_names[]        = {"hip",     "thigh", "knee", "compliant"};
 const char *joint_up_actions[]   = {"back",    "up",    "out"};
 const char *joint_down_actions[] = {"forward", "down",  "in"};
-
-// Block for reading sensors and setting the PWM to drive the solenoids
-#define BIT_RESOLUTION pow(2,10)-1
 
 int sensor_goals[3]    = {0,0,0};
 float xyz_goal[3]      = {0,0,0};
@@ -138,8 +123,8 @@ int goingHot[3]        = {0,0,0};
 
 int sensor_readings[3] = {0,0,0};
 
-int sensor_highs[3]    = {    0,     0,     0};
-int sensor_lows[3]     = {65536, 65536, 65536};
+int first_move_in[3]   = {   -1,    -1,    -1};
+int first_move_out[3]  = {   -1,    -1,    -1};
 
 /* The minimum PWM speed at which a valve can move a joint. */
 /* XXX fixme:  These should be stored in flash. */
@@ -221,11 +206,21 @@ float current_xyz[3];
 /*
  * Take three threadings and return the middle one.  This should
  * remove some sensor jitter.
+ *
+ * joint argument is 0-3.
  */
-int read_sensor(int pin)
+int read_sensor(int joint)
 {
     int r1, r2, r3;
+    int pin;
     int tmp;
+
+    if ((joint > NR_JOINTS) || (joint < 0)) {
+        Serial.println("**************** JOINT OUT OF RANGE!");
+        return -1;
+    }
+
+    pin = sensorPin[joint];
 
     r1 = analogRead(pin);
     r2 = analogRead(pin);
@@ -239,6 +234,14 @@ int read_sensor(int pin)
         SWAP(r1, r2);
     if (r3 < r2)
         SWAP(r2, r3);
+
+    /* Save min & max sensor values.  0xFFFF means blank flash. */
+    if ((r2 < leg_info.sensor_limits[joint].sensor_low) ||
+        (leg_info.sensor_limits[joint].sensor_low == 0xFFFF))
+        leg_info.sensor_limits[joint].sensor_low = r2;
+    if ((r2 > leg_info.sensor_limits[joint].sensor_high) ||
+        (leg_info.sensor_limits[joint].sensor_high == 0xFFFF))
+        leg_info.sensor_limits[joint].sensor_high = r2;
 
     return r2;
 }
@@ -456,17 +459,16 @@ int func_sensors(void)
     int i;
     int sense_highs[3]    = {    0,     0,     0};
     int sense_lows[3]     = {65536, 65536, 65536};
-    int readings[1024];
+    int readings[PWM_MAX + 1];
 
-    for (i = 0;i < 1024;i++)
+    for (i = 0;i <= PWM_MAX;i++)
         readings[i] = 0;
 
     Serial.println("");
     Serial.print("Sensors:");
     while (1) {
         for (i = 0; i < 3; i++) {
-/*            n = analogRead(sensorPin[i]);*/
-            n = read_sensor(sensorPin[i]);
+            n = read_sensor(i);
             readings[n]++;
             if (n < sense_lows[i])
                 sense_lows[i] = n;
@@ -486,7 +488,7 @@ int func_sensors(void)
 
     Serial.print(i);
     Serial.println("samples.");
-    for (i = 0;i < 1024;i++) {
+    for (i = 0;i < PWM_MAX;i++) {
         if (readings[i] != 0) {
             Serial.print(i);
             Serial.print("\t = ");
@@ -499,7 +501,7 @@ int func_sensors(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(sensor_lows[i]);
+        Serial.print(leg_info.sensor_limits[i].sensor_low);
     }
     Serial.println("");
     Serial.print("High sensor readings: ");
@@ -507,7 +509,7 @@ int func_sensors(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(sensor_highs[i]);
+        Serial.print(leg_info.sensor_limits[i].sensor_high);
     }
     Serial.println("");
     Serial.println("");
@@ -609,6 +611,10 @@ void read_cmd(void)
     while (Serial.available() > 0) {
         ch = Serial.read();
 
+        if (ch == 0x3) { /* ^C */
+            disable_leg();
+            continue;
+        }
         if (ch == 24) { /* ^X */
             func_dbg();
             continue;
@@ -898,6 +904,39 @@ void reset_current_location(void)
     xyz_goal[Z] = current_xyz[Z];
 }
 
+void print_leg_info(leg_info_t *li)
+{
+    int i;
+
+    Serial.println("Joint info:");
+
+    Serial.println("Sensor highs:");
+    for (i = 0;i < NR_JOINTS;i++) {
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        if (li->sensor_limits[i].sensor_high == 0xFFFF)
+            Serial.println("N/A");
+        else
+            Serial.println(li->sensor_limits[i].sensor_high);
+        Serial.print("\t");
+    }
+
+    Serial.println("Sensor lows:");
+    for (i = 0;i < NR_JOINTS;i++) {
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        if (li->sensor_limits[i].sensor_low == 0xFFFF)
+            Serial.println("N/A");
+        else
+            Serial.println(li->sensor_limits[i].sensor_low);
+        Serial.print("\t");
+    }
+
+    Serial.println("\n");
+
+    return;
+}
+
 void setup(void)
 {
     Serial.begin(9600);
@@ -918,6 +957,10 @@ void setup(void)
 
     pinMode(HIPPWM_REVERSE_PIN, OUTPUT);
 
+    memcpy(&leg_info, (void *)0x14000000, sizeof(leg_info));
+
+    print_leg_info(&leg_info);
+
     //sensor units per deg
     hipSensorUnitsPerDeg = (hipPotMax - hipPotMin) / (hipAngleMax - hipAngleMin);
     thighSensorUnitsPerDeg = (thighPotMax - thighPotMin) / (thighAngleMax - thighAngleMin);
@@ -932,6 +975,54 @@ void setup(void)
     reset_current_location();
 
     Serial.println("Ready to rock and roll!\n");
+
+#if 0
+
+    EEPROM.write(0x101, 'o');
+    EEPROM.write(0x105, 'r');
+    EEPROM.write(0x103, 'b');
+    EEPROM.write(0x100, 'f');
+    EEPROM.write(0x102, 'o');
+    EEPROM.write(0x104, 'a');
+
+    char p;
+
+    p = EEPROM.read(0x100);
+    Serial.print(p);
+    p = EEPROM.read(0x101);
+    Serial.print(p);
+    p = EEPROM.read(0x102);
+    Serial.print(p);
+    p = EEPROM.read(0x103);
+    Serial.print(p);
+    p = EEPROM.read(0x104);
+    Serial.print(p);
+    p = EEPROM.read(0x105);
+    Serial.print(p);
+    Serial.println("");
+
+    uint8_t *q;
+    int n;
+
+    q = (uint8_t *)0x14000000;  /* Address of flash - or FlexRam? */
+    for (n = 0;n < 1024;n++) {
+        if (!strncmp((char *)&q[n], "foobar", 6)) {
+            Serial.print("Found it at ");
+            Serial.println(n);
+            break;
+        }
+    }
+
+    /* 0xD150 = 53584. */
+
+    for (int x = n - 10;x < n + 256;x++) {
+        Serial.print(" ");
+        if (isprint(q[x]))
+            Serial.print(q[x]);
+        else
+            Serial.print((int)q[x]);
+    }
+#endif
 
     return;
 }
@@ -957,13 +1048,8 @@ void read_sensors(int *sensors)
     DEBUG("Sensors:");
     for (int i = 0; i < 3; i++) {
         /* Read sensors even if we're not moving. */
-/*        sensor_readings[i] = analogRead(sensorPin[i]);*/
-        n = read_sensor(sensorPin[i]);
+        n = read_sensor(i);
         sensors[i] = n;
-        if (n < sensor_lows[i])
-            sensor_lows[i] = n;
-        if (n > sensor_highs[i])
-            sensor_highs[i] = n;
         DEBUG("\t");
         DEBUG(joint_names[i]);
         DEBUG("\t");
@@ -1227,6 +1313,8 @@ int func_go(void)
  */
 void disable_leg()
 {
+    Serial.println("Disabling leg.");
+
     digitalWrite(ENABLE_PIN, LOW);
     digitalWrite(ENABLE_PIN_HIP, LOW);
     pwms_off();

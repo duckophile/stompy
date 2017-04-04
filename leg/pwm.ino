@@ -63,12 +63,12 @@ void set_pwm(int pwm_id, int value)
     Serial.print(value);
 #endif
 
-    scaled = (value * 1024) / 100; /* Normalize to 10 bits. */
-    if (scaled > 1023)
-        scaled = 1023;
+    scaled = (value * PWM_MAX) / 100; /* Normalize to 10 bits. */
+    if (scaled > PWM_MAX)
+        scaled = PWM_MAX;
 
 #if 0
-    Serial.print(" 10 bit value: ");
+    Serial.print(" ? bit value: ");
     Serial.print(scaled);
 #endif
 

@@ -5,14 +5,6 @@ int joystick_values[3] = {0, 0, 0};
 #define JOYSTICK_BITS	10
 #define JOYSTICK_MID	((1 << JOYSTICK_BITS) / 2)
 
-/* Joystick */
-#define JOYSTICK_X_PIN		14
-#define JOYSTICK_Y_PIN		15
-#define JOYSTICK_Z_PIN		16
-#define JS_X			0
-#define JS_Y			1
-#define JS_Z			2
-
 /*
  * 0 - forward/backward - forward = lower
  * 1 - left/right - left = lower
@@ -47,7 +39,7 @@ int func_jtest(void)
 
     while (1) {
         for (i = 0;i < 3;i++) {
-            val = read_sensor(joystick_pins[i]);
+            val = analogRead(joystick_pins[i]);
             Serial.print(val);
             Serial.print('\t');
         }
@@ -72,7 +64,7 @@ void do_joystick(void)
 
     /* Read the three joystick sensors. */
     for (i = 0;i < 3;i++)
-        joystick_values[i] = read_sensor(joystick_pins[i]);
+        joystick_values[i] = analogRead(joystick_pins[i]);
 
     /* Adjust the PWMs based on the values read. */
     for (i = 0;i < 3;i++) {
