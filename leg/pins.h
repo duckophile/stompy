@@ -5,11 +5,21 @@
 #define JOYSTICK_Y_PIN		15
 #define JOYSTICK_Z_PIN		16
 #define DEADMAN_PIN		0
+#define ENABLE_PIN		1	/* Knee and thigh */
+#define ENABLE_PIN_HIP		2
 #else
 #define JOYSTICK_X_PIN		31
 #define JOYSTICK_Y_PIN		30
 #define JOYSTICK_Z_PIN		29
 #define DEADMAN_PIN		25
+#define ENABLE_PIN		8	/* Knee and thigh */
+#define ENABLE_PIN_HIP		2
+
+#define PRESSURE_SENSOR_1	28
+#define PRESSURE_SENSOR_2	27
+#define PRESSURE_SENSOR_3	26
+#define PRESSURE_SENSOR_4	A12
+#define PRESSURE_SENSOR_MANIFOLD A13
 #endif
 
 #define KNEE_SENSOR_PIN		15
@@ -24,10 +34,6 @@
 #define KNEEPWM_EXTEND_PIN	6
 #define HIPPWM_FORWARD_PIN	9
 #define HIPPWM_REVERSE_PIN	10
-
-//enable pins for motor drivers
-#define ENABLE_PIN		1
-#define ENABLE_PIN_HIP		2
 
 #define M1FB_PIN		21
 #define M2FB_PIN		22
