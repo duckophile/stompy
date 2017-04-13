@@ -22,7 +22,7 @@ typedef struct __attribute__((packed)) {
 
 /* One of these for each of 6 valves. */
 typedef struct __attribute__((packed)) {
-    uint16_t joint_speed[10]; /* Speed, 10-100% pwm, in 10% increments. */
+    uint16_t joint_speed[11]; /* Speed, 0-100% pwm, in 10% increments. */
     uint8_t low_joint_movement; /* Lowest PWM that moves joint. */
     uint8_t padding[3];
 } valve_param_t;

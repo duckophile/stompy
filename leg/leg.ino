@@ -478,8 +478,7 @@ void print_leg_info(leg_info_t *li)
         Serial.print(li->valves[n].low_joint_movement);
         Serial.print("%\t");
 
-        Serial.print("\t");
-        for (i = 0;i < 10;i++) {
+        for (i = 1;i <= 10;i++) {
             Serial.print(i * 10);
             Serial.print("%: ");
             if (li->valves[n].joint_speed[i] == 0xFFFF)
@@ -495,8 +494,7 @@ void print_leg_info(leg_info_t *li)
         Serial.print(li->valves[n + 3].low_joint_movement);
         Serial.print("%\t");
 
-        Serial.print("\t");
-        for (i = 0;i < 10;i++) {
+        for (i = 1;i <= 10;i++) {
             Serial.print(i * 10);
             Serial.print("%: ");
             if (li->valves[n].joint_speed[i] == 0xFFFF)
