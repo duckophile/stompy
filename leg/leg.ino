@@ -203,6 +203,8 @@ float kneeSensorUnitsPerDeg;
 #define Z		2
 float current_xyz[3];
 
+leg_info_t leg_info;
+
 /*
  * Take three threadings and return the middle one.  This should
  * remove some sensor jitter.
@@ -234,14 +236,6 @@ int read_sensor(int joint)
         SWAP(r1, r2);
     if (r3 < r2)
         SWAP(r2, r3);
-
-    /* Save min & max sensor values.  0xFFFF means blank flash. */
-    if ((r2 < leg_info.sensor_limits[joint].sensor_low) ||
-        (leg_info.sensor_limits[joint].sensor_low == 0xFFFF))
-        leg_info.sensor_limits[joint].sensor_low = r2;
-    if ((r2 > leg_info.sensor_limits[joint].sensor_high) ||
-        (leg_info.sensor_limits[joint].sensor_high == 0xFFFF))
-        leg_info.sensor_limits[joint].sensor_high = r2;
 
     return r2;
 }
@@ -450,30 +444,180 @@ int func_joystick(void)
     return toggle_joystick_mode();
 }
 
+void print_leg_info(leg_info_t *li)
+{
+    int i;
+    int n;
+
+    Serial.println("\nSensor highs");
+    for (i = 0;i < NR_JOINTS;i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("     \t");
+        if (li->sensor_limits[i].sensor_high == 0xFFFF)
+            Serial.println("N/A");
+        else
+            Serial.println(li->sensor_limits[i].sensor_high);
+    }
+
+    Serial.println("\nSensor lows");
+    for (i = 0;i < NR_JOINTS;i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("     \t");
+        if (li->sensor_limits[i].sensor_low == 0xFFFF)
+            Serial.println("N/A");
+        else
+            Serial.println(li->sensor_limits[i].sensor_low);
+    }
+
+    Serial.println("\nPWM to speed mappings:");
+    for (n = 0;n < 3;n++) {
+        Serial.print(joint_names[n]);
+        Serial.print(" out:\tlowest PWM: ");
+        Serial.print(li->valves[n].low_joint_movement);
+        Serial.print("%\t");
+
+        Serial.print("\t");
+        for (i = 0;i < 10;i++) {
+            Serial.print(i * 10);
+            Serial.print("%: ");
+            if (li->valves[n].joint_speed[i] == 0xFFFF)
+                Serial.print("N/A");
+            else
+                Serial.print(li->valves[n].joint_speed[i]);
+            Serial.print("\t");
+        }
+        Serial.print("\n");
+
+        Serial.print(joint_names[n]);
+        Serial.print(" in: \tlowest PWM: ");
+        Serial.print(li->valves[n + 3].low_joint_movement);
+        Serial.print("%\t");
+
+        Serial.print("\t");
+        for (i = 0;i < 10;i++) {
+            Serial.print(i * 10);
+            Serial.print("%: ");
+            if (li->valves[n].joint_speed[i] == 0xFFFF)
+                Serial.print("N/A");
+            else
+                Serial.print(li->valves[n + 3].joint_speed[i]);
+            Serial.print("\t");
+        }
+        Serial.print("\n");
+    }
+
+    Serial.println("\n");
+
+    return;
+}
+
+#define EEPROM_BASE 0x14000000
+
+void read_leg_info(leg_info_t *li)
+{
+    memcpy(li, (void *)EEPROM_BASE, sizeof(leg_info_t));
+
+    Serial.print("Read ");
+    Serial.print(sizeof(leg_info_t));
+    Serial.println(" bytes of saved leg data.");
+
+    /* I need something to hack in defaults for unset but needed parameters. */
+
+    return;
+}
+
+void write_leg_info(leg_info_t *li)
+{
+    uint n;
+
+    for (n = 0;n < sizeof(leg_info_t);n++)
+        EEPROM.write(n, *((uint8_t *)li + n));
+
+    return;
+}
+
+int func_flashinfo(void)
+{
+    leg_info_t li;
+
+    read_leg_info(&li);
+
+    Serial.println("Leg parameters stored in flash:");
+    print_leg_info(&li);
+
+    return 0;
+}
+
+int func_leginfo(void)
+{
+    Serial.println("Leg parameters in memory and maybe not yet in flash:");
+    print_leg_info(&leg_info);
+
+    return 0;
+}
+
+int func_saveflash(void)
+{
+    write_leg_info(&leg_info);
+
+    Serial.println("Leg parameters written to flash.\n");
+
+    return 0;
+}
+
 /*
- * XXX todo:  Save a count of how many of each reading there are.
+ * Show sensor jitter.
+ *
+ * Read the sensors until a key is pressed, count the number of times
+ * each value is read, and print a crude histogram(ish) of the values
+ * seen.
  */
 int func_sensors(void)
 {
     int n;
     int i;
+    int sample_count = 0;
     int sense_highs[3]    = {    0,     0,     0};
     int sense_lows[3]     = {65536, 65536, 65536};
-    int readings[PWM_MAX + 1];
+    int readings[8192];
 
-    for (i = 0;i <= PWM_MAX;i++)
-        readings[i] = 0;
+    memset(readings, 0, sizeof(readings));
 
     Serial.println("");
-    Serial.print("Sensors:");
+    Serial.print("Sensors: ");
     while (1) {
+        sample_count++;
         for (i = 0; i < 3; i++) {
-            n = read_sensor(i);
-            readings[n]++;
-            if (n < sense_lows[i])
+            n = analogRead(sensorPin[i]);
+/*            n = read_sensor(i);*/
+            if (n < sense_lows[i]) {
+#if 0
+                Serial.print("New low for ");
+                Serial.print(joint_names[i]);
+                Serial.print(" old = ");
+                Serial.print(sense_lows[i]);
+                Serial.print(" new = ");
+                Serial.println(n);
+#endif
                 sense_lows[i] = n;
-            if (n > sense_highs[i])
+            }
+            if (n > sense_highs[i]) {
+#if 0
+                Serial.print("New high for ");
+                Serial.print(joint_names[i]);
+                Serial.print(" old = ");
+                Serial.print(sense_highs[i]);
+                Serial.print(" new = ");
+                Serial.println(n);
+#endif
+
                 sense_highs[i] = n;
+            }
+
+/*            n = n / 8; */	/* Fit 64K samples into 8192 buckets. */
+            readings[n]++;
 
 /*
             Serial.print("\t");
@@ -482,14 +626,18 @@ int func_sensors(void)
         }
 /*        Serial.println("");*/
 
-        if (Serial.available() > 0)
+        if (Serial.available() > 0) {
+            Serial.read();
             break;
+        }
     }
 
-    Serial.print(i);
-    Serial.println("samples.");
-    for (i = 0;i < PWM_MAX;i++) {
+    Serial.print(" ");
+    Serial.print(sample_count);
+    Serial.println(" samples.");
+    for (i = 0;i < 8192;i++) {
         if (readings[i] != 0) {
+/*            Serial.print(i * 8);*/
             Serial.print(i);
             Serial.print("\t = ");
             Serial.println(readings[i]);
@@ -501,7 +649,8 @@ int func_sensors(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(leg_info.sensor_limits[i].sensor_low);
+/*        Serial.print(leg_info.sensor_limits[i].sensor_low);*/
+        Serial.print(sense_lows[i]);
     }
     Serial.println("");
     Serial.print("High sensor readings: ");
@@ -509,8 +658,9 @@ int func_sensors(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(leg_info.sensor_limits[i].sensor_high);
-    }
+/*        Serial.print(leg_info.sensor_limits[i].sensor_high);*/
+        Serial.print(sense_highs[i]);
+   }
     Serial.println("");
     Serial.println("");
 
@@ -551,16 +701,19 @@ struct {
     { "dbg",       func_dbg       }, /* Enable debug once. */
     { "debug",     func_debug     },
     { "dither",    func_none      }, /* Set the dither amount. */
+    { "flashinfo", func_flashinfo }, /* Print leg parameters stored in flash. */
     { "freq",      func_none      }, /* Set PWM frequency. */
     { "go",        func_go        }, /* goto given x, y, z. */
     { "help",      func_help      },
     { "home",      func_none      }, /* Some neutral position?  Standing positioon maybe? */
     { "info",      func_info      },
     { "jtest",     func_jtest     }, /* Print joystick values for calibration. */
+    { "leginfo",   func_leginfo   }, /* Print leg paramters stored in memory. */
     { "scale",     func_scale     }, /* Set max PWM value. */
     { "joystick",  func_joystick  }, /* Enable jpoystick mode. */
     { "park",      func_none      }, /* Move leg to parked position. */
     { "pwm",       func_pwm       }, /* Set a PWM. */
+    { "saveflash", func_saveflash }, /* Write in-memory leg parameters to flash. */
     { "sensors",   func_sensors   }, /* Continuously read and print sensor readings. */
     { "stop",      func_stop      }, /* Stop moving. */
     { "where",     func_none      }, /* Print current x, y, z, and degrees. */
@@ -904,48 +1057,16 @@ void reset_current_location(void)
     xyz_goal[Z] = current_xyz[Z];
 }
 
-void print_leg_info(leg_info_t *li)
-{
-    int i;
-
-    Serial.println("Joint info:");
-
-    Serial.println("Sensor highs:");
-    for (i = 0;i < NR_JOINTS;i++) {
-        Serial.print(joint_names[i]);
-        Serial.print("\t");
-        if (li->sensor_limits[i].sensor_high == 0xFFFF)
-            Serial.println("N/A");
-        else
-            Serial.println(li->sensor_limits[i].sensor_high);
-        Serial.print("\t");
-    }
-
-    Serial.println("Sensor lows:");
-    for (i = 0;i < NR_JOINTS;i++) {
-        Serial.print(joint_names[i]);
-        Serial.print("\t");
-        if (li->sensor_limits[i].sensor_low == 0xFFFF)
-            Serial.println("N/A");
-        else
-            Serial.println(li->sensor_limits[i].sensor_low);
-        Serial.print("\t");
-    }
-
-    Serial.println("\n");
-
-    return;
-}
-
 void setup(void)
 {
-    Serial.begin(9600);
+    Serial.begin(115200);
     Serial.setTimeout(10);
 
-    //setup analog wite resolution and PWM frequency
-    analogWriteResolution(10);
+    /* Analog write resolution and PWM frequency. */
+    analogWriteResolution(ANALOG_BITS);
+    analogReadResolution(ANALOG_BITS);
 
-    //max PWM freqency of the motor driver board is 20kHz
+    /* max PWM freqency of the motor driver board is 20kHz */
     set_pwm_freq(20000);
 
     //setup deadman, enable, and error digital I/O pins
@@ -957,6 +1078,7 @@ void setup(void)
 
     pinMode(HIPPWM_REVERSE_PIN, OUTPUT);
 
+    /* Copy stored leg params from eeprom. */
     memcpy(&leg_info, (void *)0x14000000, sizeof(leg_info));
 
     print_leg_info(&leg_info);
@@ -971,6 +1093,8 @@ void setup(void)
     disable_leg();
 
     delay(2000); /* Give the serial console time to come up. */
+
+    read_leg_info(&leg_info);
 
     reset_current_location();
 
