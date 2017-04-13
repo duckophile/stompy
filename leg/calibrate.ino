@@ -288,6 +288,14 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
 
         sensor_reading = read_sensor(joint);
 
+        /* Save min & max sensor values.  0xFFFF means blank flash. */
+        if ((sensor_reading < leg_info.sensor_limits[joint].sensor_low) ||
+            (leg_info.sensor_limits[joint].sensor_low == 0xFFFF))
+            leg_info.sensor_limits[joint].sensor_low = sensor_reading;
+        if ((sensor_reading > leg_info.sensor_limits[joint].sensor_high) ||
+            (leg_info.sensor_limits[joint].sensor_high == 0xFFFF))
+            leg_info.sensor_limits[joint].sensor_high = sensor_reading;
+
         /* Check if the leg's moving. */
         if (direction == IN) {
             /* Joint going out, sensor reading going up. */
@@ -320,6 +328,7 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
             if ((sensor_reading > 628) && (state <= FULL_SPEED)) {
                 state = DECELERATING;
                 stop_micros = micros();
+                stop_sensor = sensor_reading;
                 Serial.println("# Decelerating.");
                 inc = (current_percent - 40) / 30;
                 if (inc < 1)
@@ -382,6 +391,18 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
                 Serial.print('\t');
                 Serial.print(current_percent);
 
+                {
+                    Serial.print("\t");
+                    Serial.print(" Sensors: ");
+                    Serial.print(analogRead(PRESSURE_SENSOR_1));
+                    Serial.print("\t");
+                    Serial.print(analogRead(PRESSURE_SENSOR_2));
+                    Serial.print("\t");
+                    Serial.print(analogRead(PRESSURE_SENSOR_3));
+                    Serial.print("\t");
+                    Serial.print(analogRead(PRESSURE_SENSOR_4));
+                }
+
                 Serial.println("");
                 real_last_sensor_reading = sensor_reading;
             }
@@ -435,8 +456,12 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
         return 0;
     }
 
-    Serial.print("Success: Speed = ");
+    Serial.print("Success: PWM = ");
+    Serial.print(pwm_percent);
+    Serial.print("% Speed = ");
     Serial.println(speed);
+    Serial.println("");
+
     return speed;
 }
 
