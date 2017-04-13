@@ -45,8 +45,10 @@ int func_jtest(void)
         }
         Serial.println("");
         delay(100);
-        if (Serial.available() > 0)
+        if (Serial.available() > 0) {
+            Serial.read();
             break;
+        }
     }
 
     return 0;
