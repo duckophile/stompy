@@ -1,6 +1,12 @@
 /*
  * I may also want to store something about temperature compensation.
  * Maybe sensor jitter too?
+ *
+ * X,Y,Z limits too.
+ *
+ * And angle min and max for each joint.  This will vary due to
+ * manufacturing tolerances, so this may be something we want to
+ * measure and set manually.
  */
 
 #define NR_PRESSURES	5		/* 500, 1000, 1500, 2000, 2500 PSI */
@@ -16,7 +22,7 @@ typedef struct __attribute__((packed)) {
 
 /* One of these for each of 6 valves. */
 typedef struct __attribute__((packed)) {
-    uint16_t joint_speeds[10]; /* Speed, 10-100% pwm, in 10% increments. */
+    uint16_t joint_speed[10]; /* Speed, 10-100% pwm, in 10% increments. */
     uint8_t low_joint_movement; /* Lowest PWM that moves joint. */
     uint8_t padding[3];
 } valve_param_t;
@@ -32,5 +38,3 @@ typedef struct __attribute__((packed)) {
 /*    valve_param_t valves[NR_PRESSURES];*/
     valve_param_t valves[NR_VALVES];
 } leg_info_t;
-
-leg_info_t leg_info;
