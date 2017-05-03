@@ -20,9 +20,15 @@ typedef struct __attribute__((packed)) {
     uint16_t sensor_low;
 } sensor_limits_t;
 
+typedef struct __attribute__((packed)) {
+    float angle_high;
+    float angle_low;
+    float units_per_deg;
+} joint_angles_t;
+
 /* One of these for each of 6 valves. */
 typedef struct __attribute__((packed)) {
-    uint16_t joint_speed[11]; /* Speed, 0-100% pwm, in 10% increments. */
+    uint16_t joint_speed[11]; /* Speed, 0-100% pwm, in 10% increments.  0% is not meaningful. */
     uint8_t low_joint_movement; /* Lowest PWM that moves joint. */
     uint8_t padding[3];
 } valve_param_t;
@@ -35,6 +41,15 @@ typedef struct __attribute__((packed)) {
 /* One of these for a leg. */
 typedef struct __attribute__((packed)) {
     sensor_limits_t sensor_limits[NR_SENSORS];
+    joint_angles_t joint_angles[NR_SENSORS];
 /*    valve_param_t valves[NR_PRESSURES];*/
     valve_param_t valves[NR_VALVES];
 } leg_info_t;
+
+#define ANGLE_LOW(__joint)     leg_info.joint_angles[__joint].angle_low
+#define ANGLE_HIGH(__joint)    leg_info.joint_angles[__joint].angle_high
+
+#define UNITS_PER_DEG(__joint) leg_info.joint_angles[__joint].units_per_deg
+
+#define SENSOR_LOW(__joint)    leg_info.sensor_limits[__joint].sensor_low
+#define SENSOR_HIGH(__joint)   leg_info.sensor_limits[__joint].sensor_high

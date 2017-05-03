@@ -511,6 +511,51 @@ void print_leg_info(leg_info_t *li)
     return;
 }
 
+void fudge_blank_flash_values(void)
+{
+
+    ANGLE_LOW(HIP)    = -40.46;
+    ANGLE_HIGH(HIP)   = 40.46;
+    ANGLE_LOW(THIGH)  = -6;
+    ANGLE_HIGH(THIGH) = 84;
+    ANGLE_LOW(KNEE)   = 13;
+    ANGLE_HIGH(KNEE)  = 123;
+
+    /*
+     * Actual values seen:
+     * HIP:  101-723
+     * THIGH: 62-850
+     * KNEE: -933
+     */
+
+#if 0
+    /* These are the original values used. */
+    SENSOR_LOW(HIP)    = 93;
+    SENSOR_HIGH(HIP)   = 722;
+    SENSOR_LOW(THIGH)  = 34;
+    SENSOR_HIGH(THIGH) = 917;
+    SENSOR_LOW(KNEE)   = 148;
+    SENSOR_HIGH(KNEE)  = 934;
+#endif
+
+    /*
+     * These shouldn't be as high or low as the real values, to make
+     * sure that we actually set them.
+     */
+    SENSOR_LOW(HIP)    = 130;
+    SENSOR_HIGH(HIP)   = 690;
+    SENSOR_LOW(THIGH)  = 60;
+    SENSOR_HIGH(THIGH) = 890;
+    SENSOR_LOW(KNEE)   = 170;
+    SENSOR_HIGH(KNEE)  = 900;
+
+    UNITS_PER_DEG(HIP)   = (SENSOR_HIGH(HIP)   - SENSOR_LOW(HIP))   / (ANGLE_HIGH(HIP)   - ANGLE_LOW(HIP));
+    UNITS_PER_DEG(THIGH) = (SENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / (ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH));
+    UNITS_PER_DEG(KNEE)  = (SENSOR_HIGH(KNEE)  - SENSOR_LOW(KNEE))  / (ANGLE_HIGH(KNEE)  - ANGLE_LOW(KNEE));
+
+    return;
+}
+
 #define EEPROM_BASE 0x14000000
 
 void read_leg_info(leg_info_t *li)
@@ -522,6 +567,10 @@ void read_leg_info(leg_info_t *li)
     Serial.println(" bytes of saved leg data.");
 
     /* I need something to hack in defaults for unset but needed parameters. */
+
+    /* If the flash is empty then fudge the numbers. */
+    if (SENSOR_LOW(HIP) == 0xFFFF)
+        fudge_blank_flash_values();
 
     return;
 }
@@ -834,7 +883,8 @@ int func_help(void)
         Serial.print(cmd_table[i].name);
         Serial.print(" ");
     }
-    Serial.println("");
+    Serial.print("\n");
+    Serial.print("^C to stop and disable leg.  ^X to enable debugging messages.\n\n");
 
     return 0;
 }
@@ -871,10 +921,10 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
     //convert to degrees
     theta1 = (theta1R * 4068) / 71;
     //angle goal to pot reading
-    hipGoal = ((theta1 - hipAngleMin) * hipSensorUnitsPerDeg) + hipPotMin;
-    if (hipGoal < hipPotMin || hipGoal > hipPotMax) {
+    hipGoal = ((theta1 - ANGLE_LOW(HIP)) * UNITS_PER_DEG(HIP)) + SENSOR_LOW(HIP);
+    if (hipGoal < SENSOR_LOW(HIP) || hipGoal > SENSOR_HIGH(HIP)) {
         Serial.println("HIP GOAL OUT OF RANGE!!");
-        hipGoal = constrain(hipGoal, hipPotMin, hipPotMax);
+        hipGoal = constrain(hipGoal, SENSOR_LOW(HIP), SENSOR_HIGH(HIP));
         Serial.print("constrained goal: ");
         Serial.println(hipGoal);
     }
@@ -919,10 +969,10 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
     theta2R = beta + acos((sq(L2) + sq(r) - sq(L3))/(2*L2*r));
     theta2 = (theta2R * 4068) / 71;
     //thighGoal is sensor reading at goal angle
-    thighGoal = thighPotMin + ((thighAngleMax - theta2) * thighSensorUnitsPerDeg);
-    if (thighGoal < thighPotMin || thighGoal > thighPotMax) {
+    thighGoal = SENSOR_LOW(THIGH) + ((ANGLE_HIGH(THIGH) - theta2) * UNITS_PER_DEG(THIGH));
+    if (thighGoal < SENSOR_LOW(THIGH) || thighGoal > SENSOR_HIGH(THIGH)) {
         Serial.println("THIGH GOAL OUT OF RANGE!!");
-        thighGoal = constrain(thighGoal, thighPotMin, thighPotMax);
+        thighGoal = constrain(thighGoal, SENSOR_LOW(THIGH), SENSOR_HIGH(THIGH));
         Serial.print("constrained goal: ");
         Serial.println(thighGoal);
     }
@@ -948,11 +998,11 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
     Serial.print(" theta3 = ");
     Serial.print(theta3);
 #endif
-    kneeGoal= ((kneeAngleMax - theta3) * kneeSensorUnitsPerDeg) + kneePotMin;
-    //kneeGoal = ((theta3 - kneeAngleMin) * kneeSensorUnitsPerDeg) + kneePotMin;
-    if (kneeGoal < kneePotMin || kneeGoal > kneePotMax) {
+    kneeGoal= ((ANGLE_HIGH(KNEE) - theta3) * UNITS_PER_DEG(KNEE)) + SENSOR_LOW(KNEE);
+    //kneeGoal = ((theta3 - ANGLE_LOW(KNEE)) * UNITS_PER_DEG(KNEE)) + SENSOR_LOW(KNEE);
+    if (kneeGoal < SENSOR_LOW(KNEE) || kneeGoal > SENSOR_HIGH(KNEE)) {
         Serial.print("(KNEE GOAL OUT OF RANGE) ");
-        // kneeGoal = constrain(kneeGoal, kneePotMin, kneePotMax);
+        // kneeGoal = constrain(kneeGoal, SENSOR_LOW(KNEE), SENSOR_HIGH(KNEE));
         // Serial.print("constrained goal: ");
     }
     goingHot[KNEE] = 1;
@@ -997,9 +1047,9 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
  */
 void calculate_angles(int *sensors, float *degrees)
 {
-    degrees[HIP]   = ((sensors[HIP] - hipPotMin) / hipSensorUnitsPerDeg) + hipAngleMin;
-    degrees[THIGH] = thighAngleMax - ((sensors[THIGH] - thighPotMin) / thighSensorUnitsPerDeg);
-    degrees[KNEE]  = kneeAngleMax  - ((sensors[KNEE]  - kneePotMin)  / kneeSensorUnitsPerDeg);
+    degrees[HIP]   = ((sensors[HIP] - SENSOR_LOW(HIP)) / UNITS_PER_DEG(HIP)) + ANGLE_LOW(HIP);
+    degrees[THIGH] = ANGLE_HIGH(THIGH) - ((sensors[THIGH] - SENSOR_LOW(THIGH)) / UNITS_PER_DEG(THIGH));
+    degrees[KNEE]  = ANGLE_HIGH(KNEE)  - ((sensors[KNEE]  - SENSOR_LOW(KNEE))  / UNITS_PER_DEG(KNEE));
 
     for (int i = 0;i < 3;i++)
         current_rad[i] = (degrees[i] * 71) / 4068;
@@ -1082,9 +1132,11 @@ void setup(void)
     print_leg_info(&leg_info);
 
     //sensor units per deg
-    hipSensorUnitsPerDeg = (hipPotMax - hipPotMin) / (hipAngleMax - hipAngleMin);
-    thighSensorUnitsPerDeg = (thighPotMax - thighPotMin) / (thighAngleMax - thighAngleMin);
-    kneeSensorUnitsPerDeg = (kneePotMax - kneePotMin) / (kneeAngleMax - kneeAngleMin);
+#if 0
+    UNITS_PER_DEG(HIP) = (hipSENSOR_HIGH(HIP) - SENSOR_LOW(HIP)) / (ANGLE_HIGH(HIP) - ANGLE_LOW(HIP));
+    UNITS_PER_DEG(THIGH) = (thighSENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / (ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH));
+    UNITS_PER_DEG(KNEE) = (kneeSENSOR_HIGH(KNEE) - SENSOR_LOW(KNEE)) / (ANGLE_HIGH(KNEE) - ANGLE_LOW(KNEE));
+#endif
 
     interrupt_setup();
 

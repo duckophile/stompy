@@ -63,6 +63,7 @@ void do_joystick(void)
     int i;
     int pwm;
     int val;
+    static int last_micros;
 
     /* Read the three joystick sensors. */
     for (i = 0;i < 3;i++)
@@ -102,6 +103,34 @@ void do_joystick(void)
 #if 1
     DEBUGLN("");
 #endif
+
+    if (debug_flag && (micros() - last_micros) > 100000)
+    {
+        Serial.print("Pressure: ");
+        Serial.print("Knee extend: ");
+        Serial.print(analogRead(PRESSURE_SENSOR_1)); /* Knee extend */
+        Serial.print("\tThigh extend:\t");
+        Serial.print(analogRead(PRESSURE_SENSOR_2));
+        Serial.print("\tThigh retract:\t");
+        Serial.print(analogRead(PRESSURE_SENSOR_3)); /* Thigh retract */
+        Serial.print("\tKnee retract:\t ");
+        Serial.print(analogRead(PRESSURE_SENSOR_4)); /* Knee retract */
+
+        Serial.print(" PWMs: ");
+        for (i = 0;i < 6;i++) {
+            Serial.print(current_pwms[i]);
+            Serial.print("\t");
+        }
+
+        Serial.print("Joint sensors: : ");
+        for (i = 0;i < 3;i++) {
+            Serial.print(sensor_readings[i]);
+            Serial.print("\t");
+        }
+        Serial.print("\n");
+
+        last_micros = micros();
+    }
 
     return;
 }

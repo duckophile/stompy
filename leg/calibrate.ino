@@ -289,12 +289,10 @@ int exercise_joint(int joint, int direction, int pwm_percent, int verbose)
         sensor_reading = read_sensor(joint);
 
         /* Save min & max sensor values.  0xFFFF means blank flash. */
-        if ((sensor_reading < leg_info.sensor_limits[joint].sensor_low) ||
-            (leg_info.sensor_limits[joint].sensor_low == 0xFFFF))
-            leg_info.sensor_limits[joint].sensor_low = sensor_reading;
-        if ((sensor_reading > leg_info.sensor_limits[joint].sensor_high) ||
-            (leg_info.sensor_limits[joint].sensor_high == 0xFFFF))
-            leg_info.sensor_limits[joint].sensor_high = sensor_reading;
+        if ((sensor_reading < SENSOR_LOW(joint)) ||(SENSOR_LOW(joint) == 0xFFFF))
+            SENSOR_LOW(joint) = sensor_reading;
+        if ((sensor_reading > SENSOR_HIGH(joint)) || (SENSOR_HIGH(joint) == 0xFFFF))
+            SENSOR_HIGH(joint) = sensor_reading;
 
         /* Check if the leg's moving. */
         if (direction == IN) {
@@ -687,6 +685,10 @@ int calibrate(void)
 
     pwms_off();
 
+    UNITS_PER_DEG(HIP)   = (SENSOR_HIGH(HIP)   - SENSOR_LOW(HIP))   / (ANGLE_HIGH(HIP)   - ANGLE_LOW(HIP));
+    UNITS_PER_DEG(THIGH) = (SENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / (ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH));
+    UNITS_PER_DEG(KNEE)  = (SENSOR_HIGH(KNEE)  - SENSOR_LOW(KNEE))  / (ANGLE_HIGH(KNEE)  - ANGLE_LOW(KNEE));
+
     Serial.println("");
     Serial.println("# Done with calibration.");
     Serial.println("");
@@ -696,7 +698,7 @@ int calibrate(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(leg_info.sensor_limits[i].sensor_low);
+        Serial.print(SENSOR_LOW(i));
     }
     Serial.println("");
     Serial.print("# High sensor readings: ");
@@ -704,7 +706,7 @@ int calibrate(void)
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
-        Serial.print(leg_info.sensor_limits[i].sensor_high);
+        Serial.print(SENSOR_HIGH(i));
     }
     Serial.println("");
     Serial.println("");
