@@ -110,7 +110,7 @@ void do_joystick(void)
         Serial.print("Knee extend: ");
         Serial.print(analogRead(PRESSURE_SENSOR_1)); /* Knee extend */
         Serial.print("\tThigh extend:\t");
-        Serial.print(analogRead(PRESSURE_SENSOR_2));
+        Serial.print(analogRead(PRESSURE_SENSOR_2)); /* Thigh extend */
         Serial.print("\tThigh retract:\t");
         Serial.print(analogRead(PRESSURE_SENSOR_3)); /* Thigh retract */
         Serial.print("\tKnee retract:\t ");
