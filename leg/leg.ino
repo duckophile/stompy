@@ -70,6 +70,11 @@ static int periodic_debug_flag = 0;
 #define DEBUG   if(debug_flag)Serial.print
 #define DEBUGLN if(debug_flag)Serial.println
 
+/* Timing info for the ISR loop. */
+uint32_t isr_max = 0;
+uint32_t isr_min = 1 << 31;
+uint32_t isr_count = 0;
+
 #define HIP		0
 #define THIGH		1
 #define KNEE		2
@@ -111,6 +116,7 @@ const int pwm_pins[6]  = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRAC
 #define OUT	0      /* Sensor value decreasing. */
 #define IN	3      /* Sensor value increasing. */
 
+const char *direction_names[]    = {"OUT",     NULL,    NULL,   "IN"};
 const char *joint_names[]        = {"hip",     "thigh", "knee", "compliant"};
 const char *joint_up_actions[]   = {"back",    "up",    "out"};
 const char *joint_down_actions[] = {"forward", "down",  "in"};
@@ -122,9 +128,6 @@ float angle_goals[3]   = {0,0,0};
 int goingHot[3]        = {0,0,0};
 
 int sensor_readings[3] = {0,0,0};
-
-int first_move_in[3]   = {   -1,    -1,    -1};
-int first_move_out[3]  = {   -1,    -1,    -1};
 
 /* The minimum PWM speed at which a valve can move a joint. */
 /* XXX fixme:  These should be stored in flash. */
@@ -162,20 +165,26 @@ int homePosition[] = {900, 200, 350};
 //Sensor reading to angle of joint block
 //These sensor values are for the right front leg
 
+#if 0
 int hipPotMax = 722;
 int hipPotMin = 93;
+#endif
 float hipAngleMin = -40.46;
 float hipAngleMax = 40.46;
 float hipSensorUnitsPerDeg;
 
+#if 0
 int thighPotMax = 917;
 int thighPotMin = 34;
+#endif
 float thighAngleMin = -6;
 float thighAngleMax = 84;
 float thighSensorUnitsPerDeg;
 
+#if 0
 int kneePotMax = 934;
 int kneePotMin = 148;
+#endif
 float kneeAngleMin = 13;
 float kneeAngleMax = 123;
 float kneeSensorUnitsPerDeg;
@@ -399,7 +408,7 @@ void print_goals(void)
         Serial.print("\t");
         Serial.print(angle_goals[i]);
     }
-    Serial.println("");
+    Serial.print("\n");
 
     return;
 }
@@ -408,7 +417,7 @@ int func_info(void)
 {
     int i;
 
-    Serial.println("================================================================");
+    Serial.println("\n================================================================");
     Serial.println("Current info:\n");
     Serial.print("deadMan: ");
     Serial.print(deadMan);
@@ -417,14 +426,29 @@ int func_info(void)
     Serial.print(" goingHot: ");
     for (i = 0;i < 3;i++)
         Serial.print(goingHot[i]);
-    Serial.println("");
+    Serial.print("\n");
 
     print_current();
-    Serial.println("");
+    Serial.print("\n");
     print_goals();
-
-    Serial.println("================================================================");
-    Serial.println("");
+    Serial.print("\n");
+    Serial.print("Sensor lows/highs:\n");
+    for (i = 0;i < 3;i++) {
+        Serial.print(joint_names[i]);
+        Serial.print("\tLow: ");
+        Serial.print(SENSOR_LOW(i));
+        Serial.print("\tHigh: ");
+        Serial.print(SENSOR_HIGH(i));
+        Serial.print("\n");
+    }
+    Serial.print("\n");
+    Serial.print("ISR min: ");
+    Serial.print(isr_min);
+    Serial.print("us, ISR max: ");
+    Serial.print(isr_max);
+    Serial.print("us.  ISR count: ");
+    Serial.println(isr_count);
+    Serial.print("================================================================\n\n");
 
     return 0;
 }
@@ -474,7 +498,7 @@ void print_leg_info(leg_info_t *li)
     Serial.println("\nPWM to speed mappings:");
     for (n = 0;n < 3;n++) {
         Serial.print(joint_names[n]);
-        Serial.print(" out:\tlowest PWM: ");
+        Serial.print(" out:\tlowest PWM:  ");
         Serial.print(li->valves[n].low_joint_movement);
         Serial.print("%\t");
 
@@ -485,12 +509,12 @@ void print_leg_info(leg_info_t *li)
                 Serial.print("N/A");
             else
                 Serial.print(li->valves[n].joint_speed[i]);
-            Serial.print("\t");
+            Serial.print("  \t");
         }
         Serial.print("\n");
 
         Serial.print(joint_names[n]);
-        Serial.print(" in: \tlowest PWM: ");
+        Serial.print(" in: \tlowest PWM:  ");
         Serial.print(li->valves[n + 3].low_joint_movement);
         Serial.print("%\t");
 
@@ -501,7 +525,7 @@ void print_leg_info(leg_info_t *li)
                 Serial.print("N/A");
             else
                 Serial.print(li->valves[n + 3].joint_speed[i]);
-            Serial.print("\t");
+            Serial.print("   \t");
         }
         Serial.print("\n");
     }
@@ -513,6 +537,7 @@ void print_leg_info(leg_info_t *li)
 
 void fudge_blank_flash_values(void)
 {
+    return;
 
     ANGLE_LOW(HIP)    = -40.46;
     ANGLE_HIGH(HIP)   = 40.46;
@@ -585,6 +610,16 @@ void write_leg_info(leg_info_t *li)
     return;
 }
 
+void erase_leg_info(void)
+{
+    uint n;
+
+    for (n = 0;n < sizeof(leg_info_t);n++)
+        EEPROM.write(n, 0xFF);
+
+    return;
+}
+
 int func_flashinfo(void)
 {
     leg_info_t li;
@@ -610,6 +645,15 @@ int func_saveflash(void)
     write_leg_info(&leg_info);
 
     Serial.println("Leg parameters written to flash.\n");
+
+    return 0;
+}
+
+int func_eraseflash(void)
+{
+    erase_leg_info();
+
+    Serial.println("Flash parameters erased.\n");
 
     return 0;
 }
@@ -707,13 +751,12 @@ int func_sensors(void)
         Serial.print("\t");
 /*        Serial.print(leg_info.sensor_limits[i].sensor_high);*/
         Serial.print(sense_highs[i]);
-   }
+    }
     Serial.println("");
     Serial.println("");
 
     return 0;
 }
-
 
 /*
  * Stick the leg straight out and wiggle it up and down in hopes of
@@ -742,29 +785,30 @@ struct {
     const char *name;
     int (*func)();
 } cmd_table[] = {
-    { "bleed",     func_bleed     },
-    { "calibrate", func_calibrate },
-    { "deadman",   func_deadman   }, /* Ignore the deadman. */
-    { "dbg",       func_dbg       }, /* Enable debug once. */
-    { "debug",     func_debug     },
-    { "dither",    func_none      }, /* Set the dither amount. */
-    { "flashinfo", func_flashinfo }, /* Print leg parameters stored in flash. */
-    { "freq",      func_none      }, /* Set PWM frequency. */
-    { "go",        func_go        }, /* goto given x, y, z. */
-    { "help",      func_help      },
-    { "home",      func_none      }, /* Some neutral position?  Standing positioon maybe? */
-    { "info",      func_info      },
-    { "jtest",     func_jtest     }, /* Print joystick values for calibration. */
-    { "leginfo",   func_leginfo   }, /* Print leg paramters stored in memory. */
-    { "scale",     func_scale     }, /* Set max PWM value. */
-    { "joystick",  func_joystick  }, /* Enable jpoystick mode. */
-    { "park",      func_none      }, /* Move leg to parked position. */
-    { "pwm",       func_pwm       }, /* Set a PWM. */
-    { "saveflash", func_saveflash }, /* Write in-memory leg parameters to flash. */
-    { "sensors",   func_sensors   }, /* Continuously read and print sensor readings. */
-    { "stop",      func_stop      }, /* Stop moving. */
-    { "where",     func_none      }, /* Print current x, y, z, and degrees. */
-    { NULL,        NULL           }
+    { "bleed",      func_bleed     },
+    { "calibrate",  func_calibrate },
+    { "deadman",    func_deadman   }, /* Ignore the deadman. */
+    { "dbg",        func_dbg       }, /* Enable debug once. */
+    { "debug",      func_debug     },
+    { "dither",     func_none      }, /* Set the dither amount. */
+    { "eraseflash", func_eraseflash}, /* Erase the parameters saved in flash. */
+    { "flashinfo",  func_flashinfo }, /* Print leg parameters stored in flash. */
+    { "freq",       func_none      }, /* Set PWM frequency. */
+    { "go",         func_go        }, /* goto given x, y, z. */
+    { "help",       func_help      },
+    { "home",       func_none      }, /* Some neutral position?  Standing positioon maybe? */
+    { "info",       func_info      },
+    { "jtest",      func_jtest     }, /* Print joystick values for calibration. */
+    { "leginfo",    func_leginfo   }, /* Print leg paramters stored in memory. */
+    { "scale",      func_scale     }, /* Set max PWM value. */
+    { "joystick",   func_joystick  }, /* Enable jpoystick mode. */
+    { "park",       func_none      }, /* Move leg to parked position. */
+    { "pwm",        func_pwm       }, /* Set a PWM. */
+    { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */
+    { "sensors",    func_sensors   }, /* Continuously read and print sensor readings. */
+    { "stop",       func_stop      }, /* Stop moving. */
+    { "where",      func_none      }, /* Print current x, y, z, and degrees. */
+    { NULL,         NULL           }
 };
 
 char cmd_buf[128];
@@ -1122,7 +1166,11 @@ int read_xyz(float *xyz)
     return 0;
 }
 
-void check_deadman(void)
+/*
+ * Returns 0 if the deadman is released (leg disabled).
+ * Returns 1 if the deadman is held (leg enabled).
+ */
+int check_deadman(void)
 {
     int i;
 
@@ -1145,7 +1193,7 @@ void check_deadman(void)
         deadMan = i;
     }
 
-    return;
+    return deadMan;
 }
 
 void thing(int n)
@@ -1165,6 +1213,7 @@ void thing(int n)
         done = 1;
 }
 
+#if 0
 void loop(void)
 {
     static int last_seconds = 0;
@@ -1184,7 +1233,7 @@ void loop(void)
     }
 
     if (periodic_debug_flag) {
-        seconds = micros() / 500000;
+        seconds = millis() / 1000;
         if (last_seconds != seconds) {
             dbg_n(1);
             last_seconds = seconds;
@@ -1194,7 +1243,8 @@ void loop(void)
     /* Check for any input on the console. */
     read_cmd();
 
-    check_deadman();
+    if (!check_deadman())
+        return;
 
     /*
      * If the foot has moved an inch in any direction then print the
@@ -1225,7 +1275,10 @@ void loop(void)
     return;
 }
 
-void old_loop(void)
+#else
+
+/* XXX old loop */
+void loop(void)
 {
     static int last_seconds = 0;
     int seconds;
@@ -1244,7 +1297,7 @@ void old_loop(void)
     }
 
     if (periodic_debug_flag) {
-        seconds = micros() / 500000;
+        seconds = millis() / 1000;
         if (last_seconds != seconds) {
             dbg_n(1);
             last_seconds = seconds;
@@ -1303,6 +1356,7 @@ void old_loop(void)
 
     return;
 }
+#endif
 
 /*
  * The 'go' command.
@@ -1346,7 +1400,7 @@ int func_go(void)
  */
 void disable_leg()
 {
-    Serial.println("Disabling leg.");
+    Serial.print("\n**************** Disabling leg. ****************\n\n");
 
     digitalWrite(ENABLE_PIN, LOW);
     digitalWrite(ENABLE_PIN_HIP, LOW);
