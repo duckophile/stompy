@@ -3,8 +3,11 @@
 #define TIE 0x2
 #define TEN 0x1
 
-uint32_t isr_max = 0;
-uint32_t isr_min = 1 << 31;
+/*
+ * XXX fixme: I need some form of mutex to keep the ISR and main loop
+ * from colliding.  Maybe just disable interrupts in the main loop
+ * when needed?
+ */
 
 void pit0_isr(void)
 {
@@ -12,18 +15,22 @@ void pit0_isr(void)
 
     start_time = micros();
 
-    adjust_pwms();
+/*    velocity_loop();*/
 
-    velocity_loop();
+    /* This is supposed to do acceleration, which is currently disabled. */
+    adjust_pwms();
 
     end_time = micros();
 
-    total_time = end_time - start_time;
+    if (end_time > start_time) { /* Avoid micros() wrapping every 1:11 */
+        total_time = end_time - start_time;
 
-    if (total_time < isr_min)
-        isr_min = total_time;
-    if (total_time > isr_max)
-        isr_max = total_time;
+        if (total_time < isr_min)
+            isr_min = total_time;
+        if (total_time > isr_max)
+            isr_max = total_time;
+    }
+    isr_count++;
 
     PIT_TFLG0 = 1;
 }
