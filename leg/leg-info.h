@@ -46,10 +46,20 @@ typedef struct __attribute__((packed)) {
     valve_param_t valves[NR_VALVES];
 } leg_info_t;
 
-#define ANGLE_LOW(__joint)     leg_info.joint_angles[__joint].angle_low
-#define ANGLE_HIGH(__joint)    leg_info.joint_angles[__joint].angle_high
+#define ANGLE_LOW(__joint)        leg_info.joint_angles[__joint].angle_low
+#define ANGLE_HIGH(__joint)       leg_info.joint_angles[__joint].angle_high
 
-#define UNITS_PER_DEG(__joint) leg_info.joint_angles[__joint].units_per_deg
+#define UNITS_PER_DEG(__joint)    leg_info.joint_angles[__joint].units_per_deg
 
-#define SENSOR_LOW(__joint)    leg_info.sensor_limits[__joint].sensor_low
-#define SENSOR_HIGH(__joint)   leg_info.sensor_limits[__joint].sensor_high
+#define SENSOR_LOW(__joint)       leg_info.sensor_limits[__joint].sensor_low
+#define SENSOR_HIGH(__joint)      leg_info.sensor_limits[__joint].sensor_high
+
+/*
+ * There are six valves and three joints.  The valves are arranged (in
+ * software) as three valves for moving out and three valves for
+ * moving in.  OUT = 0, IN = 3, so (joint + direction) = valve.
+ */
+
+#define LOW_PWM_MOVEMENT(__valve) leg_info.valves[__valve].low_joint_movement
+
+#define JOINT_SPEED(__valve, __pwm) leg_info.valves[__valve].joint_speed[__pwm]
