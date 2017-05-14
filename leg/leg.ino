@@ -779,6 +779,18 @@ int func_calibrate(void)
     return calibrate();
 }
 
+int do_timing(int, int);
+
+int func_timing(void)
+{
+    int direction, pwm;
+
+    direction = read_int();
+    pwm = read_int();
+
+    return do_timing(direction, pwm);
+}
+
 int func_go(void);
 
 struct {
@@ -807,6 +819,7 @@ struct {
     { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */
     { "sensors",    func_sensors   }, /* Continuously read and print sensor readings. */
     { "stop",       func_stop      }, /* Stop moving. */
+    { "timing",     func_timing    }, /* Collect timing info. */
     { "where",      func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,         NULL           }
 };
@@ -928,7 +941,7 @@ int func_help(void)
         Serial.print(" ");
     }
     Serial.print("\n");
-    Serial.print("^C to stop and disable leg.  ^X to enable debugging messages.\n\n");
+    Serial.print("^C to stop and disable leg.  ^X to enable/disable debugging messages.\n\n");
 
     return 0;
 }
