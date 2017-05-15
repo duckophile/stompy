@@ -128,10 +128,15 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
     deg_goals[KNEE]  = theta3;
 
     Serial.print("\nNew Goals: (x,y,z):\t");
-    print_xyz(xyz[X], xyz[Y], xyz[Z]);
+    print_xyz(xyz);
     Serial.println("");
     Serial.print("Goal angles (deg):\t");
-    print_xyz(theta1, theta2, theta3);
+    Serial.print(theta1);
+    Serial.print(" ");
+    Serial.print(theta2);
+    Serial.print(" ");
+    Serial.print(theta3);
+
     Serial.println("");
     Serial.print("Sensor goals:\thip\t");
     Serial.print(sense_goals[HIP]);
@@ -153,8 +158,6 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
  * Takes sensor readings from sensor_readingss[] and calculates the
  * angles in degrees into current_deg[] and radians into
  * current_rad[].
- *
- * XXX fixme:  This should have the sensor readings passed in and return the angles.
  */
 void calculate_angles(int *sensors, double *degrees)
 {
@@ -183,8 +186,6 @@ void calculate_angles(int *sensors, double *degrees)
  *
  * Takes the current angles from rad[] and converts to the current
  * (x,y,z).
- *
- * XXX fixme:  This should take all values as arguments.
  */
 void calculate_xyz(double xyz[], double rad[])
 {

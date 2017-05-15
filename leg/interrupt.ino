@@ -33,6 +33,8 @@ void pit0_isr(void)
     isr_count++;
 
     PIT_TFLG0 = 1;
+
+    return;
 }
 
 void disable_interrupts(void)
@@ -60,5 +62,8 @@ void interrupt_setup(void)
     PIT_MCR = 0x00;
     NVIC_ENABLE_IRQ(IRQ_PIT_CH0);
     PIT_LDVAL0 = 0x007A120; /* 500000 - about 100hz. */
+
     enable_interrupts();
+
+    return;
 }

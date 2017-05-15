@@ -96,22 +96,16 @@ uint32_t isr_count = 0;
 /*
  * *_up and *_down are poor names.
  */
-#if 1
 const int up_pwms[3]   = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_EXTEND_PIN};
 const int down_pwms[3] = {HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_RETRACT_PIN};
 const int pwm_pins[6]  = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_EXTEND_PIN,
                           HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_RETRACT_PIN};
-#else
-/* This ordering was to match the joystick, but messed up the kinematics, */
-const int up_pwms[3]   = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN};
-const int down_pwms[3] = {HIPPWM_REVERSE_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
-const int pwm_pins[6]  = {HIPPWM_FORWARD_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN,
-                          HIPPWM_REVERSE_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
-#endif
 
 /*
   * These are used to convert an 0-2 joint number to a valve number in
-  * the pwm_pins[] array.
+  * the pwm_pins[] array.  pwm_pins[joint + OUT] is the valve pin to
+  * move a joint out, pwm_pins[jount + IN] is the valve pin to move
+  * the joint in.
   */
 #define OUT	0      /* Sensor value decreasing. */
 #define IN	3      /* Sensor value increasing. */
@@ -217,14 +211,14 @@ int read_sensor(int joint)
     return r2;
 }
 
-void print_xyz(double x, double y, double z)
+void print_xyz(double xyz[3])
 {
     Serial.print("(");
-    Serial.print(x);
+    Serial.print(xyz[X]);
     Serial.print("\t");
-    Serial.print(y);
+    Serial.print(xyz[Y]);
     Serial.print("\t");
-    Serial.print(z);
+    Serial.print(xyz[Z]);
     Serial.print(")");
 
     return;
@@ -291,6 +285,8 @@ void dbg_n(int n)
 {
     old_debug_flag = debug_flag;
     debug_flag = n;
+
+    return;
 }
 
 int func_dbg(void)
@@ -444,6 +440,7 @@ int func_joyxyz(void)
     } else {
         joystick_mode = JOYSTICK_POSITION;
         Serial.print("\nJoystick positional mode enabled.\n\n");
+        enable_leg();
     }
 
     return 0;
@@ -758,6 +755,13 @@ int func_calibrate(void)
     return calibrate();
 }
 
+int func_enable(void)
+{
+    enable_leg();
+
+    return 0;
+}
+
 int do_timing(int, int);
 
 int func_timing(void)
@@ -812,6 +816,10 @@ int func_park(void)
 
 int measure_speed(int joint, int direction, int pwm_goal, int verbose);
 
+/*
+ * A speed test.  Tries random PWM values within 32 of the lowest
+ * joint movement PWM value and reports joint speed.
+ */
 int func_speed(void)
 {
     int pwm;
@@ -854,6 +862,7 @@ struct {
     { "dbg",        func_dbg       }, /* Enable debug once. */
     { "debug",      func_debug     },
     { "dither",     func_none      }, /* Set the dither amount. */
+    { "enable",     func_enable    }, /* Enable the leg, allowing it to move. */
     { "eraseflash", func_eraseflash}, /* Erase the parameters saved in flash. */
     { "flashinfo",  func_flashinfo }, /* Print leg parameters stored in flash. */
     { "freq",       func_none      }, /* Set PWM frequency. */
@@ -1012,6 +1021,12 @@ void reset_current_location(void)
     xyz_goal[X] = current_xyz[X];
     xyz_goal[Y] = current_xyz[Y];
     xyz_goal[Z] = current_xyz[Z];
+
+    Serial.print("Current location set to ");
+    print_xyz(current_xyz);
+    Serial.print("\n");
+
+    return;
 }
 
 void setup(void)
@@ -1048,8 +1063,6 @@ void setup(void)
     UNITS_PER_DEG(KNEE) = (kneeSENSOR_HIGH(KNEE) - SENSOR_LOW(KNEE)) / (ANGLE_HIGH(KNEE) - ANGLE_LOW(KNEE));
 #endif
 
-    interrupt_setup();
-
     disable_leg();
 
     delay(2000); /* Give the serial console time to come up. */
@@ -1058,7 +1071,10 @@ void setup(void)
 
     reset_current_location();
 
-    Serial.println("Ready to rock and roll!\n");
+    interrupt_setup();
+
+    Serial.print("\nReady to rock and roll!\n\n");
+    Serial.print("(Leg disabled, use 'enable' command to enable it)\n\n");
 
     return;
 }
@@ -1074,6 +1090,8 @@ void print_reading(int i, int sensor, int goal, const char *joint, const char *a
     Serial.print(joint);
     Serial.print(' ');
     Serial.println(action);
+
+    return;
 }
 
 /* Reads the current leg position sensors. */
@@ -1161,6 +1179,8 @@ void write_pwms(void)
             Serial.println("\treached goal - going cold.");
         }
     }
+
+    return;
 }
 
 int read_xyz(double *xyz)
@@ -1170,15 +1190,14 @@ int read_xyz(double *xyz)
     xyz[Y] = read_double();
     xyz[Z] = read_double();
 
-    if (xyz[X] == 0) {
-        xyz[X] = xyz[X] + .0001;
-        //Serial.println("x = 0 so .0001 was added to avoid degenerate case");
-    }
+    /* XXX fixme:  Kludge to avoid divide by zero. */
+    if (xyz[X] == 0)
+        xyz[X] = 0.0001;
 
 #if 0
     Serial.println("");
     Serial.print("I was given a goal of (x,y,z): ");
-    print_xyz(*x, *y, *z);
+    print_xyz(xyz);
     Serial.println("");
 #endif
 
@@ -1230,6 +1249,8 @@ void thing(int n)
     Serial.println("");
     if (joystick_mode == 0)
         done = 1;
+
+    return;
 }
 
 #if 1
@@ -1280,14 +1301,14 @@ void loop(void)
     {
 #if 0
         Serial.print("Current (x,y,z): ");
-        print_xyz(current_xyz[X], currentY, currentZ);
+        print_xyz(current_xyz);
         Serial.print(" Goal: ");
-        print_xyz(xyz_goal[0], xyz_goal[1], xyz_goal[2]);
+        print_xyz(xyz_goal);
         Serial.println("");
 #endif
 /*
         Serial.print(" current angles (hip, thigh, knee): ");
-        print_xyz(current_deg[HIP], current_deg[THIGH], current_deg[KNEE]);
+        print_xyz(current_deg);
         Serial.println("");
 */
 
@@ -1359,14 +1380,14 @@ void loop(void)
     {
 #if 0
         Serial.print("Current (x,y,z): ");
-        print_xyz(current_xyz[X], currentY, currentZ);
+        print_xyz(current_xyz);
         Serial.print(" Goal: ");
-        print_xyz(xyz_goal[0], xyz_goal[1], xyz_goal[2]);
+        print_xyz(xyz_goal);
         Serial.println("");
 #endif
 /*
         Serial.print(" current angles (hip, thigh, knee): ");
-        print_xyz(current_deg[HIP], current_deg[THIGH], current_deg[KNEE]);
+        print_xyz(current_deg);
         Serial.println("");
 */
 
@@ -1431,8 +1452,10 @@ void disable_leg()
     pwms_off();
     for (int i = 0; i < 3; i++)
         goingHot[i] = 0;
-    //Serial.println("Joystick is deactivated -- all off!");
+
     Serial.println("Leg disabled.");
+
+    return;
 }
 
 void enable_leg(void)

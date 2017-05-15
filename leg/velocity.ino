@@ -28,6 +28,8 @@ void set_joint_speed(uint32_t joint_num, uint32_t joint_speed)
     pwm_val = ((double)joint_speed + 328.0) / 8.3;
 
     set_pwm_goal(joint_num, pwm_val);
+
+    return;
 }
 
 /*
@@ -83,7 +85,7 @@ void calculate_deltas(double xyz_delta[], int xyz_scale[], int xyz_direction[])
 {
     int i;
     double largest_delta = 0;
-    static int loop_count = 0;
+/*    static int loop_count = 0;*/
 
     /* Calculate the deltas from where we are to where we want to be. */
     for (i = 0;i < 3; i++) {
@@ -110,6 +112,7 @@ void calculate_deltas(double xyz_delta[], int xyz_scale[], int xyz_direction[])
     for (i = 0;i < 3;i++)
         xyz_scale[i] = (int)((abs(xyz_delta[i]) * 100) / largest_delta);
 
+#if 0
     if ((loop_count++ % 100) == 0) {
         Serial.print("XYZ deltas from current to goal: ");
         for (i = 0;i < 3; i++) {
@@ -125,6 +128,7 @@ void calculate_deltas(double xyz_delta[], int xyz_scale[], int xyz_direction[])
         }
         Serial.print("\n");
     }
+#endif
 
     return;
 }
@@ -192,18 +196,40 @@ void velocity_loop(void)
     double xyz_delta[3];
     int xyz_scale[3];
     int xyz_direction[3];
-    int leg_speed = 100;
+    int leg_speed = 60; /* XXX fixme:  Hardwired value. */
+    static int debug_count = 0;
 
     check_deadman();
 
     /* Read the sensors. */
     read_sensors(sensor_readings);
 
+    if ((debug_count % 100) == 0) {
+        Serial.print("Sensors: ");
+        Serial.print(sensor_readings[0]);
+        Serial.print("\t");
+        Serial.print(sensor_readings[1]);
+        Serial.print("\t");
+        Serial.print(sensor_readings[2]);
+        Serial.print("\n");
+    }
+
     /* Turn sensor readings into joint angles. */
     calculate_angles(sensor_readings, current_deg);
 
+    if ((debug_count % 100) == 0) {
+        Serial.print("Degrees: ");
+        print_xyz(current_deg);
+        Serial.print("\n");
+    }
+
     /* Turn joint angles into (x,y,z). */
     calculate_xyz(current_xyz, current_rad);
+    if ((debug_count % 100) == 0) {
+        Serial.print("XYZ: ");
+        print_xyz(current_xyz);
+        Serial.print("\n");
+    }
 
     /*
      * If the joystick is enabled then read it and modify the goal
@@ -223,6 +249,8 @@ void velocity_loop(void)
 
     /* Write the PWMs to make the leg move. */
     set_pwms(leg_speed, xyz_scale, xyz_direction);
+
+    debug_count++;
 
     return;
 }
