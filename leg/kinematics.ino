@@ -1,3 +1,5 @@
+/* ; -*- mode: C ;-*- */
+
 /*
  * Takes an X,Y,Z location and calculates the joint angles in degrees
  * and radians that will give that location.
@@ -10,11 +12,11 @@
  * XXX fixme: This should be two functions, one to convert (x,y,z) to
  * three angles, and another to convert that to sensor values.
  */
-void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
+void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
 {
-    float theta1R, theta2R, theta3R; /* Goal angles in degrees. */
-    float theta1, theta2, theta3; /* Goal angles in radians. */
-    float hipGoal, thighGoal, kneeGoal; /* Goal sensor values. */
+    double theta1R, theta2R, theta3R; /* Goal angles in degrees. */
+    double theta1, theta2, theta3; /* Goal angles in radians. */
+    double hipGoal, thighGoal, kneeGoal; /* Goal sensor values. */
 
     Serial.print("New goal (x,y,z): ");
     Serial.print("(");
@@ -41,8 +43,8 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
     Serial.println("Hip going hot.");
 
     /* Thigh - theta2 */
-    float r;
-    float x1;
+    double r;
+    double x1;
     if (theta1R == 0) {
         x1 = (xyz[X] - L1);
     }
@@ -50,7 +52,7 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
         x1 = (xyz[Y]/sin(theta1R)) - L1;
     }
     x1 = abs(x1);
-    float beta = atan(xyz[Z]/x1);
+    double beta = atan(xyz[Z]/x1);
     if (xyz[X] == L1) {
         beta = -(PI/2);
     }
@@ -62,7 +64,7 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
             r = xyz[Z]/sin(beta);
         }
         r = abs(r);
-        float gama = asin(x1/r);
+        double gama = asin(x1/r);
         beta = -(gama + PI/2);
     }
     else {
@@ -89,7 +91,7 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
     Serial.println("Thigh going hot.");
 
     /* Knee - theta3 */
-    theta3R = acos( (sq(L3) + sq(L2) - sq(r)) / (float)(2*L3*L2));
+    theta3R = acos( (sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2));
     theta3 = (theta3R * 4068) / 71;
 #if 0
     Serial.print("knee rad = ");
@@ -99,7 +101,7 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
     Serial.print(" / ");
     Serial.print((2*L3*L2));
     Serial.print(" ), or acos( ");
-    Serial.print((sq(L3) + sq(L2) - sq(r)) / (float)(2*L3*L2));
+    Serial.print((sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2));
     Serial.print(" ) ");
 
     Serial.print(" and ");
@@ -154,7 +156,7 @@ void inverse_kin(float *xyz, int *sense_goals, float *deg_goals)
  *
  * XXX fixme:  This should have the sensor readings passed in and return the angles.
  */
-void calculate_angles(int *sensors, float *degrees)
+void calculate_angles(int *sensors, double *degrees)
 {
     degrees[HIP]   = ((sensors[HIP] - SENSOR_LOW(HIP)) / UNITS_PER_DEG(HIP)) + ANGLE_LOW(HIP);
     degrees[THIGH] = ANGLE_HIGH(THIGH) - ((sensors[THIGH] - SENSOR_LOW(THIGH)) / UNITS_PER_DEG(THIGH));
@@ -179,23 +181,23 @@ void calculate_angles(int *sensors, float *degrees)
 /*
  * Forward kinematics.
  *
- * Takes the current angles from current_rad[] and converts to the
- * current (x,y,z).
+ * Takes the current angles from rad[] and converts to the current
+ * (x,y,z).
  *
  * XXX fixme:  This should take all values as arguments.
  */
-void calculate_xyz(void)
+void calculate_xyz(double xyz[], double rad[])
 {
-    current_xyz[X] = cos(current_rad[HIP]) * (L1 + L2*cos(current_rad[THIGH]) + L3*cos(current_rad[THIGH] + current_rad[KNEE] - PI));
-    current_xyz[Y] = current_xyz[X] * tan(current_rad[HIP]);
-    current_xyz[Z] = (L2 * sin(current_rad[THIGH])) + (L3 * sin(current_rad[THIGH] + current_rad[KNEE] - PI));
+    xyz[X] = cos(rad[HIP]) * (L1 + L2*cos(rad[THIGH]) + L3*cos(rad[THIGH] + rad[KNEE] - PI));
+    xyz[Y] = xyz[X] * tan(rad[HIP]);
+    xyz[Z] = (L2 * sin(rad[THIGH])) + (L3 * sin(rad[THIGH] + rad[KNEE] - PI));
 
     DEBUG("Current\t\tX:\t");
-    DEBUG(current_xyz[X]);
+    DEBUG(xyz[X]);
     DEBUG("\tY:\t");
-    DEBUG(current_xyz[Y]);
+    DEBUG(xyz[Y]);
     DEBUG("\tZ:\t");
-    DEBUG(current_xyz[Z]);
+    DEBUG(xyz[Z]);
     DEBUGLN("");
 
     return;

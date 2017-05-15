@@ -15,7 +15,7 @@ void pit0_isr(void)
 
     start_time = micros();
 
-/*    velocity_loop();*/
+    velocity_loop();
 
     /* This is supposed to do acceleration, which is currently disabled. */
     adjust_pwms();
@@ -35,6 +35,24 @@ void pit0_isr(void)
     PIT_TFLG0 = 1;
 }
 
+void disable_interrupts(void)
+{
+    PIT_TCTRL0 &= ~TIE;
+    PIT_TCTRL0 &= ~TEN;
+    PIT_TFLG0 &= ~1;
+
+    return;
+}
+
+void enable_interrupts(void)
+{
+    PIT_TCTRL0 = TIE;
+    PIT_TCTRL0 |= TEN;
+    PIT_TFLG0 |= 1;
+
+    return;
+}
+
 void interrupt_setup(void)
 {
 /*    pinMode(13,OUTPUT);*/
@@ -42,7 +60,5 @@ void interrupt_setup(void)
     PIT_MCR = 0x00;
     NVIC_ENABLE_IRQ(IRQ_PIT_CH0);
     PIT_LDVAL0 = 0x007A120; /* 500000 - about 100hz. */
-    PIT_TCTRL0 = TIE;
-    PIT_TCTRL0 |= TEN;
-    PIT_TFLG0 |= 1;
+    enable_interrupts();
 }

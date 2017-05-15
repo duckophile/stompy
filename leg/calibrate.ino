@@ -74,6 +74,9 @@ int move_joint_all_the_way(int valve, int pwm_percent)
     int failed = 0;
     int i;
 
+    if (!check_deadman())
+        return -1;
+
     sensor_num = valve;
     /* Sensor number is 0-2. */
     if (sensor_num >= 3) {
@@ -95,13 +98,12 @@ int move_joint_all_the_way(int valve, int pwm_percent)
     Serial.println(sensorPin[sensor_num]);
 
     /* Set the PWM to move the joint. */
-/*    set_pwm(valve, pwm_percent);*/
-    analogWrite(pwm_pins[valve], (pwm_percent * PWM_MAX) / 100);
+    capped_pwm_write(valve, pwm_percent);
 
     /* Look for movement, wait until it stops. */
     sensor_reading = read_sensor(sensor_num);
     last_sensor_reading = sensor_reading;
-    /* 100 readings of 100ms each. */
+    /* 600 readings of 100ms each. */
     for (i = 0;i < 600;i++) {
         if (!check_deadman()) {
             failed = 1;
@@ -156,7 +158,7 @@ int move_joint_all_the_way(int valve, int pwm_percent)
         Serial.println("Leg didn't stop moving!");
         return -1;
     } else if (failed) {
-        Serial.println("Aborted by keypress.");
+        Serial.println("Aborted by keypress or deadman?");
         return -1;
     } else
         return last_sensor_reading;
@@ -169,7 +171,9 @@ int move_joint_all_the_way(int valve, int pwm_percent)
 #define DECELERATING	2
 
 /* If the joint hasn't moved after this many readings then it's not moving. */
-#define NO_CHANGE_LIMIT		200
+/* XXX fixme:  I think this should be a lot lower - 100?  50?  20? */
+/* #define NO_CHANGE_LIMIT		200 */
+#define NO_CHANGE_LIMIT		40
 
 /*
  * Move a joint in a direction at a specific PWM percentage.
@@ -199,11 +203,8 @@ int move_joint_all_the_way(int valve, int pwm_percent)
  */
 
 /*
- * THIS ISN'T ACTUALLY AS CONTORTED AS IT LOOKS!
- *
- * It's really pretty simple, it's just written out as simple as
- * possible, which makes it look big, plus there's a lot of debugging
- * output.
+ * This is pointlessly contorted - measure_speed() is
+ * better and does the same stuff.
  */
 
 int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
@@ -485,8 +486,8 @@ int do_timing(int direction, int pwm)
 
 void capped_pwm_write(int valve, int percent)
 {
-    if (percent > PWM_MAX)
-        percent = PWM_MAX;
+    if (percent > 100)
+        percent = 100;
     if (percent < 0)
         percent = 0;
     analogWrite(pwm_pins[valve], (percent * PWM_MAX) / 100);
@@ -494,9 +495,9 @@ void capped_pwm_write(int valve, int percent)
     return;
 }
 
-#define TIE 0x2
-#define TEN 0x1
-
+/*
+ * Moves the joint and measures the time between sensor changes.
+ */
 int do_timing_thing(int joint, int direction, int pwm_goal, int verbose)
 {
     static int run_count = 0;
@@ -518,9 +519,7 @@ int do_timing_thing(int joint, int direction, int pwm_goal, int verbose)
     uint32_t this_time, last_time;
     uint32_t sensor_timing[ANALOG_MAX + 1];
 
-    PIT_TCTRL0 &= ~TIE;
-    PIT_TCTRL0 &= ~TEN;
-    PIT_TFLG0 &= ~1;
+    disable_interrupts();
 
     set_pwm_scale(100);
     enable_leg();
@@ -694,10 +693,11 @@ int do_timing_thing(int joint, int direction, int pwm_goal, int verbose)
         Serial.print("# Total milliseconds at full speed: ");
         Serial.println(total_millis);
 
-        Serial.print("# Speed - sensor_units/sec at  ");
-        Serial.print(pwm_goal);
-        Serial.print("% pwm: ");
+        Serial.print("Speed: ");
         Serial.println(speed);
+        Serial.print("\tPWM: ");
+        Serial.print(pwm_goal);
+        Serial.print("\n");
 
         for (i = ANALOG_MAX;(i > 0) && (sensor_timing[i] == 0);i--)
             ;
@@ -737,6 +737,223 @@ failed:
 }
 
 /*
+ * Measures the speed of a joint in a given direction.  The speed, in
+ * sensor_units/sec, is returned.
+ *
+ * The joint is accelerated from the low_pwm_movement value to the
+ * desired PWM, and is decelerated at the end of travel.  The speed is
+ * measured only for the portion of travel that's at full speed.
+ *
+ * The joint is assumed to already be in an appropriate position for
+ * this test.
+ */
+int measure_speed(int joint, int direction, int pwm_goal, int verbose)
+{
+    static int run_count = 0;
+    int sensor_reading;
+    int i;
+    int current_pwm;
+    int valve;
+    int start_millis = 0;
+    int start_sensor = 0;
+    int stop_millis = 0;
+    int stop_sensor = 0;
+    int low_pwm;
+    int speed;
+    int total_millis;
+    int total_sensor;
+    int high_sensor_decel, low_sensor_decel;
+    int sensor_high_end, sensor_low_end;
+    uint32_t this_time, last_time;
+
+    Serial.print("\n");
+    run_count++;
+
+    disable_interrupts();
+
+    set_pwm_scale(100);
+    enable_leg();
+
+    /* Accelerate from the lowest PWM value that gives movement. */
+    current_pwm = LOW_PWM_MOVEMENT(joint + direction);
+    if (current_pwm < pwm_goal)
+        current_pwm = pwm_goal;
+
+    /* Decelerate down to this value when stopping. */
+    low_pwm = LOW_PWM_MOVEMENT(joint + direction) + 5;
+    if (low_pwm > pwm_goal)
+        low_pwm = pwm_goal;
+
+    /* Start accelerating/decelerating this far from the end of travel. */
+    /*
+     * XXX fixme: The distance from the end of travel should be based
+     * on the difference between the desired PWM and LOW_PWM_MOVEMENT.
+     * I don't think 30 is high enough for higher PWMs.
+     */
+    high_sensor_decel = SENSOR_HIGH(joint) - 40; /* When to start decelerating. */
+    low_sensor_decel  = SENSOR_LOW(joint)  + 40; /* When to start decelerating. */
+    sensor_high_end   = SENSOR_HIGH(joint) - 10; /* close enough to the end of travel. */
+    sensor_low_end    = SENSOR_LOW(joint)  + 10;
+
+    /* XXX fixme:  This should only be printed if verbose. */
+    Serial.print("# Measuring speed of ");
+    Serial.print(joint_names[joint]);
+    Serial.print(direction == IN ? " in " : " out ");
+    Serial.print(pwm_goal);
+    Serial.print(" percent PWM (which might be scaled by the PWM module).\n");
+
+    valve = joint + direction;
+
+    /* out = decreasing sensor reading. */
+
+    sensor_reading = read_sensor(joint);
+
+    this_time = millis();
+    last_time = this_time;
+
+    Serial.print("Accelerating...\n");
+    /* Accelerate. */
+    for (i = 0;i < 30000;i++) {
+        capped_pwm_write(valve, current_pwm);
+
+        current_pwm++;
+        if (current_pwm >= pwm_goal) {
+            current_pwm = pwm_goal;
+            break;
+        }
+
+        /* Only run through this loop every X milliseconds. */
+        while ((this_time - last_time) < 2)
+            this_time = millis();
+        last_time = this_time;
+
+        /* Check to see if we're too close to the end of travel. */
+        if (((direction == IN)  && (sensor_reading > high_sensor_decel)) ||
+            ((direction == OUT) && (sensor_reading < low_sensor_decel))) {
+            Serial.print("# Prematurely reached end of travel at sensor reading ");
+            Serial.println(sensor_reading);
+            goto failed;
+        }
+    }
+
+/*    Serial.print("Hit full PWM.\n");*/
+
+    capped_pwm_write(valve, current_pwm);
+    start_millis = millis();
+    last_time = start_millis;
+    sensor_reading = read_sensor(joint);
+    start_sensor = sensor_reading;
+
+    /* Running at full speed. */
+    while (1) {
+        if (check_keypress())
+            goto failed;
+
+#if 0
+        /* Frobulate the PWM value every X milliseconds. */
+        this_time = millis();
+        if ((this_time - last_time) > 0) {
+            last_time = this_time;
+            /* XXX Do something to current_pwm. */
+            capped_pwm_write(valve, current_pwm);
+        }
+#endif
+
+        sensor_reading = read_sensor(joint);
+
+        /* Check to see if we're close to the end and need to decelerate. */
+        if (((direction == IN)  && (sensor_reading > high_sensor_decel)) ||
+            ((direction == OUT) && (sensor_reading < low_sensor_decel))) {
+            break;
+        }
+    }
+
+    stop_millis = millis();
+    stop_sensor = sensor_reading;
+
+#if 0
+    Serial.print("Decelerating\n");
+    Serial.print("Looking for high end of ");
+
+    Serial.print(sensor_high_end);
+    Serial.print(" or a low end of ");
+    Serial.print(sensor_low_end);
+    Serial.print(" and I should be looking for ");
+    Serial.print(direction == IN ? "high\n" : "low\n");
+#endif
+
+    /* Decelerate - 1%/ms. */
+    for (i = 0;i < 30000;i++) {
+        if (check_keypress())
+            goto failed;
+
+        if (current_pwm > low_pwm)
+            current_pwm--;
+
+        capped_pwm_write(valve, current_pwm);
+
+        /* Only run through this loop every X milliseconds. */
+        while ((this_time - last_time) < 2)
+            this_time = millis();
+        last_time = this_time;
+
+        sensor_reading = read_sensor(joint);
+        /* Check to see if we're close enough to the end of travel. */
+        if (((direction == IN)  && (sensor_reading > sensor_high_end)) ||
+            ((direction == OUT) && (sensor_reading < sensor_low_end))) {
+            /* Hit the end of travel. */
+            Serial.print("Hit end of travel.\n");
+            break;
+        }
+    }
+
+    capped_pwm_write(valve, 0);
+    set_pwm(valve, 0);
+
+    total_millis = stop_millis - start_millis;
+    total_sensor = abs(stop_sensor - start_sensor);
+    speed = (total_sensor * 1000) / total_millis;
+    if ((stop_sensor == 0) || (stop_millis == 0))
+        speed = 0;
+
+    if (verbose) {
+        Serial.print("# Done, PWM = ");
+        Serial.print(pwm_goal);
+        Serial.print("%, Speed = ");
+        Serial.println(speed);
+
+        Serial.print("# Start sensor reading: ");
+        Serial.print(start_sensor);
+        Serial.print(", end sensor reading: ");
+        Serial.print(stop_sensor);
+        Serial.print(", total sensor movement: ");
+        Serial.println(total_sensor);
+
+        Serial.print("# Total milliseconds at full speed: ");
+        Serial.println(total_millis);
+
+        Serial.print("Speed: ");
+        Serial.print(speed);
+        Serial.print("\tPWM: ");
+        Serial.print(pwm_goal);
+        Serial.print(direction == IN ? "  in " : " out ");
+
+        Serial.print("\tRun: ");
+        Serial.print(run_count);
+
+        Serial.print("\n");
+    }
+
+    return speed;
+
+failed:
+    capped_pwm_write(valve, 0);
+    set_pwm(valve, 0);
+
+    return -1;
+}
+
+/*
  * Find the lowest PWM value that results in joint movement.
  *
  * Joint movement is defined as the joint sensor moving by at least
@@ -751,13 +968,11 @@ failed:
  */
 
 /* Minimum sensor value change that indicates movement. */
-#define MIN_SENSOR_MOVEMENT	15
+#define MIN_SENSOR_MOVEMENT	30
 
-int find_joint_first_movement(int joint, int direction)
+int find_joint_first_movement(int joint, int direction, int pwm_val, int pwm_inc)
 {
     int valve;
-    int pwm_val;
-    int pwm_inc;
     int rc = 0;
     int start_sensor_val;
     int current_sensor_val;
@@ -771,12 +986,8 @@ int find_joint_first_movement(int joint, int direction)
 
     valve = joint + direction;
 
-    /* These values should be passed in. */
-    pwm_val = 5; /* Start at 5%. */
-    pwm_inc = 5; /* Increment by 5%. */
-
-    /* Try PWM values up to 90%. */
-    for (;pwm_val < 90;pwm_val += pwm_inc) {
+    /* Try PWM values up to 70%. */
+    for (;pwm_val < 70;pwm_val += pwm_inc) {
         if (!check_deadman())
             return -1;
 
@@ -789,7 +1000,7 @@ int find_joint_first_movement(int joint, int direction)
         Serial.print(pwm_val);
         Serial.print("% PWM.\n");
 
-        analogWrite(pwm_pins[valve], (pwm_val * PWM_MAX) / 100);
+        capped_pwm_write(valve, pwm_val);
 
         /* Movement should happen in a second if it's going to happen. */
         for (n = 0;n < 1000;n++) {
@@ -813,11 +1024,12 @@ int find_joint_first_movement(int joint, int direction)
         Serial.print(sensor_diff);
         Serial.print("\n");
 
-        analogWrite(pwm_pins[valve], 0);
-        delay(100);	/* Wait at 0% pwm for 100ms. */
+        capped_pwm_write(valve, 0);
+
+        delay(100);	/* No movement, so wait at 0% pwm for 100ms then try higher PWM. */
     }
 
-    analogWrite(pwm_pins[valve], 0);
+    capped_pwm_write(valve, 0);
 
     if (rc > 0) {
         Serial.print("# Found ");
@@ -842,6 +1054,9 @@ int find_joint_first_movement(int joint, int direction)
 
 /*
  * Returns 0 for success, -1 for failure.
+ *
+ * XXX fixme: If this is the thigh then it needs an artificial
+ * end-of-travel to keep it from hitting the ground.
  */
 int find_joint_sensor_limit(int joint, int direction, int pwm_val)
 {
@@ -872,9 +1087,15 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     else
         sensor_limit = 1 << 30;
 
-    analogWrite(pwm_pins[valve], (pwm_val * PWM_MAX) / 100);
+    sensor_val = read_sensor(joint);
+    Serial.print("# Sensor start = ");
+    Serial.print(sensor_val);
+    Serial.print(":");
+
+    capped_pwm_write(valve, pwm_val);
 
     /* If there's no movement for a second then the joint must be at the end. */
+    /* XXX fixme:  I should bail if the joint's moving very slow. */
     for (n = 0;n < 10;n++) {
         if (!check_deadman())
             return -1;
@@ -882,35 +1103,40 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
             return -1;
 
         sensor_val = read_sensor(joint);
-        Serial.print("Sensor = ");
-        Serial.print(sensor_val);
-        Serial.print(", limit ");
-        Serial.print(sensor_limit);
 
         if (direction == IN) {
-            Serial.print(" IN ");
             /* Joint going IN, sensor reading going up. */
             if (sensor_val > sensor_limit) {
                 sensor_limit = sensor_val;
                 n = 0;	/* Restart one second wait. */
-                Serial.print(" new high.");
             }
         } else { /* direction == OUT */
-            Serial.print(" OUT ");
-            /* Joint going in, sensor reading going down. */
+            /* Joint going OUT, sensor reading going down. */
             if (sensor_val < sensor_limit) {
                 sensor_limit = sensor_val;
                 n = 0;	/* Restart one second wait. */
-                Serial.print(" new low.");
             }
         }
-        Serial.print("\n");
+        if (n == 0) {
+            Serial.print(" ");
+            Serial.print(sensor_val);
+        }
+
+        /* XXX Artificial limit for thigh to avoid ground interference. */
+        if (joint == THIGH) {
+            if (sensor_val > 500) {
+                Serial.print("\n**** Hit artificial thigh limit!\n\n");
+                break;
+            }
+        }
 
         delay(100);	/* 100ms delay. */
     }
 
     /* Stop joint. */
-    analogWrite(pwm_pins[valve], 0);
+    capped_pwm_write(valve, 0);
+
+    Serial.print("\n");
 
     Serial.print("# ");
     Serial.print(joint_names[joint]);
@@ -919,7 +1145,7 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     Serial.print(direction == IN ? " high" : " low");
     Serial.print(" sensor reading: ");
     Serial.print(sensor_limit);
-    Serial.print("\n");
+    Serial.print("\n\n");
 
     if (direction == IN)
         SENSOR_HIGH(joint) = sensor_limit;
@@ -929,160 +1155,237 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     return rc;
 }
 
-#if 0
 /*
- * Find the lowest PWM value at which a joint moves.
+ * Find the speed (sensor_units/sec) corresponding to a specific PWM
+ * value for the given joint, in both directions.
  *
- * The PWM percentage is returned.
+ * Each joint is tested the specified (count) number of times, and an
+ * average is taken of those runs, which is stored in the in-memory
+ * leg info struct.
+ *
+ * Returns 0 on success, non-zero on failure.
+ *
+ * This tests movement going OUT, so it moves the joint IN first.
  */
-
-/* Start testing for movement at this percentage. */
-#define DISCOVERY_START_PWM	30
-
-int old_find_joint_first_movement(int joint, int direction)
-{
-    float try_pwm;
-    float pwm_inc;
-    int other_direction;
-    int rc;
-    int last_movement_percent = -1;
-
-    Serial.print("\n#************************************************\n");
-    Serial.print("# Discovering low PWM limit for ");
-    Serial.print(joint_mames[joint]);
-    Serial.print(diretion == IN ? " IN\n" : " OUT\n");
-    Serial.print("#************************************************\n");
-
-    if (direction == IN)
-        other_direction = OUT;
-    else
-        other_direction = IN;
-
-    try_pwm = DISCOVERY_START_PWM;
-    pwm_inc = try_pwm;
-    do {
-        pwm_inc = pwm_inc / 2;
-
-        Serial.println("@ Moving joint to position.");
-        if (exercise_joint(joint, other_direction, 50, 1) == -1) {
-            Serial.print("@ Failed to move joint to starting position.\n");
-            goto fail;
-        }
-        Serial.println("@ Done , waiting...");
-        delay(1000);
-
-        Serial.println("");
-        rc = exercise_joint(joint, direction, (int)try_pwm, 1);
-        if (rc == -1) {
-            Serial.println("@ Aborting due to error return from exercise_joint.");
-            goto fail;
-        }
-        Serial.println("@ Done , waiting...");
-        delay(1000);
-
-        Serial.print("@ ");
-        Serial.print(joint_names[joint]);
-        if (rc == 0) {
-            try_pwm += pwm_inc; /* Didn't move, so go faster next time. */
-            Serial.print(" didn't move");
-        } else {
-            last_movement_percent = (int)try_pwm;
-            try_pwm -= pwm_inc; /* Did move, so go slower next time. */
-            Serial.print(" did move");
-        }
-        Serial.print(direction == IN ? " in" : " out");
-        Serial.print(" at ");
-        Serial.print((int)try_pwm);
-        Serial.println(" percent.");
-
-    } while (pwm_inc >= 1);
-
-    Serial.print("@ Found first movement point at ");
-    Serial.print(last_movement_percent);
-    Serial.println("%\n");
-
-    /* Save to leg_info. */
-    leg_info.valves[joint + direction].low_joint_movement = last_movement_percent;
-
-    return last_movement_percent;
-
-fail:
-    Serial.println("\n@ Failed to find first movement point.\n");
-    return -1;
-}
-#endif
-
-/*
- * I should be able to specify a starting PWM value and an increment.
- */
-int find_joint_pwm_speeds(int joint, int direction)
+int find_joint_pwm_speeds(int joint, int count)
 {
     int pwm_val;
-    int other_direction;
+    int pwm_start;
     int rc;
+    int direction;
+    int dir;
+    int speeds[11][10][2]; /* 11 PWM values (0-100% in tens), average up to 10 tries, 2 directions. */
+    int iternum;
+
+    if (count > 10)
+        count = 10;
+
+    memset(speeds, 0, sizeof(speeds));
 
     Serial.print("\n#****************************************************************\n");
     Serial.print("# Discovering PWM speeds for ");
     Serial.print(joint_names[joint]);
-    Serial.print(" ");
-    Serial.println(direction_names[direction]);
+    Serial.print("\n");
     Serial.print("#****************************************************************\n");
 
-    if (direction == IN)
-        other_direction = OUT;
-    else
-        other_direction = IN;
+    /* Start at 10% below the lowest starting point of the two directions. */
+    pwm_start = min(LOW_PWM_MOVEMENT(joint + IN), LOW_PWM_MOVEMENT(joint + OUT));
+    pwm_start -= 10;
+    pwm_start += 9;
+    pwm_start = (pwm_start / 10) * 10;
 
-    pwm_val = LOW_PWM_MOVEMENT(joint + direction) - 10;
-
-    if (pwm_val == -1) {
-        Serial.println("**************** I do not have a low PWM value for this joint!\n");
+    Serial.println("# Moving joint to position.");
+    if (exercise_joint(joint, IN, LOW_PWM_MOVEMENT(joint + IN) + 5, 0) == -1)
         return -1;
-    }
-    Serial.print("# This joint will first move at ");
-    Serial.print(pwm_val);
-    Serial.print("%\n");
+    Serial.print("# Done , waiting...\n");
+    delay(1000);
 
-    pwm_val += 9;
-    pwm_val = (pwm_val / 10) * 10;
+    direction = OUT;
 
-    for (;pwm_val <= 100;pwm_val += 10) {
-        Serial.println("# Moving joint to position.");
-        /* This might fail if the joint's already in position. */
-        if (exercise_joint(joint, other_direction, LOW_PWM_MOVEMENT(joint + direction) + 5, 0) == -1)
-            return -1;
-        Serial.print("# Done , waiting...\n");
-        delay(1000);
+    for (iternum = 0;iternum < count;iternum++) {
 
-        Serial.println("");
-        Serial.print("# Testing at ");
-        Serial.print(pwm_val);
-        Serial.print("%\n");
-        rc = exercise_joint(joint, direction, pwm_val, 1);
-        if (rc == -1) {
-            Serial.print("exercise_joint() failed.\n");
-            return -1;
+        Serial.print("\n# Iteration ");
+        Serial.print(iternum);
+        Serial.print(" of ");
+        Serial.println(count);
+
+        pwm_val = pwm_start;
+
+        /* PWM value is from min movement to 100%. */
+        while (pwm_val <= 100) {
+
+            Serial.print("# Testing ");
+            Serial.print(joint_names[joint]);
+            Serial.print(direction == IN ? " in " : " out");
+            Serial.print("\t at ");
+            Serial.print(pwm_val);
+            Serial.print("%\n");
+
+            rc = exercise_joint(joint, direction, pwm_val, 1);
+            if (rc == -1) {
+                Serial.print("exercise_joint() failed.\n");
+                return -1;
+            }
+
+            Serial.print("PWM/SPEED: ");
+            Serial.print("\t");
+            Serial.print(pwm_val);
+            Serial.print("% PWM gave ");
+            Serial.print(joint_names[joint]);
+            Serial.print(direction == IN ? " in " : " out");
+            Serial.print("\tmovement at speed ");
+            Serial.println(rc);
+
+            speeds[iternum][pwm_val / 10][direction ? 1 : 0] = rc;
+
+            Serial.print("# Done, waiting...\n\n");
+            delay(1000);
+
+            /*
+             * If the joint is moving OUT then switch to IN.  If the
+             * joint is moving IN then increase the PWM and switch to
+             * OUT.
+             */
+            if (direction == OUT)
+                direction = IN;
+            else {
+                direction = OUT;
+                pwm_val += 10;
+            }
         }
-        Serial.print("# ");
-        Serial.print(pwm_val);
-        Serial.print("% PWM gave ");
-        Serial.print(joint_names[joint]);
-        Serial.print(" movement at speed ");
-        Serial.println(rc);
-        /* XXX fixme:  joint speed needs to be in larger units, like sensor units/sec. */
-        JOINT_SPEED(joint + direction, pwm_val / 10) = rc;
-        Serial.print("# Done, waiting...\n\n");
-        delay(1000);
+    }
+
+    /*
+     * Print out the results, average the results, and store it.
+     */
+    for (dir = 0;dir < 2;dir++) {
+        direction = dir ? IN : OUT;
+
+        for (pwm_val = 0;pwm_val < 11;pwm_val++) {
+            int speed_total = 0;
+            int speed_count = 0;
+
+            Serial.print(joint_names[joint]);
+            Serial.print(direction == IN ? "  in\t" : " out\t");
+
+            Serial.print("Speeds: ");
+            Serial.print(pwm_val * 10);
+            Serial.print("%\t");
+            Serial.print(direction ? "in \t" : "out\t");
+
+            for (iternum = 0;iternum < count;iternum++) {
+                if (speeds[iternum][pwm_val][dir] != 0) {
+                    Serial.print(speeds[iternum][pwm_val][dir]);
+                    Serial.print("\t");
+                    speed_total += speeds[iternum][pwm_val][dir];
+                    speed_count++;
+                }
+            }
+
+            /* Save the average. */
+            JOINT_SPEED(joint + direction, pwm_val) = speed_total / speed_count;
+
+            Serial.print("= ");
+            Serial.println(JOINT_SPEED(joint + direction, pwm_val));
+        }
     }
 
     Serial.println("\nDone finding joint PWM speeds\n\n");
+    Serial.print("#****************************************************************\n");
 
     return 0;
 }
 
+/*
+ * Find the first movement PWM value and sensor limit for a joint in a
+ * specific direction.
+ *
+ * XXX fixme:  Maybe this should have speed passed in?
+ *
+ * XXX fixme: If this is the knee then it gets air in it if it's run
+ * all the way up, so after being run all the way up it needs to be
+ * run against the stop in the other direction.
+ *
+ * If the cylinder hasn't been de-aired then it (XXX which function?)
+ * will prematurely detect stoppage at the gravity crossing.
+ *
+ * XXX fixme: If it's the thigh then it needs an artificial stop to keep
+ * it from hitting the ground.
+ */
+int find_joint_limits(int joint, int direction)
+{
+    int i;
+
+    /* I might need to move the joint into position if it's against the wrong end. */
+
+    /* Find first movement to 10% granularity. */
+    i = find_joint_first_movement(joint, direction, 10, 10);
+    if (i == -1)
+        return -1;
+    /* XXX fixme:  I should return the joint to the beginning of travel. */
+    i -= 10;
+    if (i < 1)
+        i = 1;
+    /* Now find first movement to 1% granularity. */
+    i = find_joint_first_movement(joint, direction, i, 1);
+    if (i == -1)
+        return -1;
+
+    LOW_PWM_MOVEMENT(joint + direction) = i;
+
+    if (i != 0) {
+        /* Find the sensor limit. */
+        if (find_joint_sensor_limit(joint, direction, LOW_PWM_MOVEMENT(joint + direction) + 5))
+            return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * Find the first movement PWM value, sensor limits, and PWM->speed
+ * mappings for a joint in both directions.
+ *
+ * IN first, then OUT.
+ */
+int calibrate_joint(int joint)
+{
+    int rc;
+
+    /*
+     * XXX fixme: I might need to move the joint into position, if
+     * it's all the way to the wrong end.
+     */
+
+    /* XXX Maybe I should pass speed in? */
+    rc = find_joint_limits(joint, IN);
+
+    if (rc == -1)
+        return -1;
+
+    /* And the same thing for the other directoon. */
+
+    rc = find_joint_limits(joint, OUT);
+
+    if (rc == -1)
+        return -1;
+
+    /* Discover PWM -> speed mapppings for both directions. */
+    if (find_joint_pwm_speeds(joint, 4) == -1)
+        return -1;
+
+    Serial.println("# Done, waiting...");
+    delay(1000);
+
+    return 0;
+}
+
+
 int calibrate(void)
 {
     int i;
+
+    disable_interrupts();
 
     set_pwm_scale(100);
 
@@ -1092,7 +1395,7 @@ int calibrate(void)
 
     /* I should use a low speed PWM value if I have one. */
     Serial.println("# Retracting thigh.");
-    if (move_joint_all_the_way(THIGHPWM_UP, 50) == -1)
+    if (move_joint_all_the_way(THIGHPWM_UP, 45) == -1)
         return -1;
 
     Serial.println("# Done, waiting...");
@@ -1100,66 +1403,61 @@ int calibrate(void)
 
     Serial.println("# Retracting knee.");
     /* Move knee up. */
-    if (move_joint_all_the_way(KNEEPWM_EXTEND, 50) == -1)
+    if (move_joint_all_the_way(KNEEPWM_EXTEND, 45) == -1)
         return -1;
 
     Serial.println("# Done, waiting...");
     delay(1000);
 
+#if 0
     /*******/
     /* HIP */
     /*******/
 
-    /* Find the lowest PWM value at which the hip moves in. */
-    /* This might fail if the joint's already against the stop. */
-    i = find_joint_first_movement(HIP, IN);
-    if (i == -1)
+    /* This does IN first, so move the joint OUT. */
+    if (move_joint_all_the_way(HIPPWM_REVERSE, 45) == -1)
         return -1;
-    LOW_PWM_MOVEMENT(HIP + IN) = i;
-    if (i != 0) {
-        /* Find the low sensor limit. */
-        if (find_joint_sensor_limit(HIP, IN, LOW_PWM_MOVEMENT(HIP + IN)))
-            return -1;
-    }
-
-    /* Find the lowest PWM value at which the hip moves out. */
-    i = find_joint_first_movement(HIP, OUT);
-    if (i == -1)
-        return -1;
-    LOW_PWM_MOVEMENT(HIP + OUT) = i;
-
-    /* Find the high sensor limit. */
-    if (find_joint_sensor_limit(HIP, OUT, LOW_PWM_MOVEMENT(HIP + OUT)))
-        return -1;
-
-    /*
-     * The first try at HIP IN might have failed if the joint started
-     * out already at its end limit, so retry if necessary.
-     */
-    if (LOW_PWM_MOVEMENT(HIP + IN) == 0) {
-        i = find_joint_first_movement(HIP, IN);
-        LOW_PWM_MOVEMENT(HIP + IN) = i;
-        if (find_joint_sensor_limit(HIP, IN, LOW_PWM_MOVEMENT(HIP + IN)))
-            return -1;
-    }
-
-    /* The hip could be in or out at this point. */
-
-    /* XXX fixme:  I should have some way to park the hip in the middle of its travel. */
-
-    /* discover PWM -> speed mapppings. */
-    if (find_joint_pwm_speeds(HIP, IN) == -1)
-        return -1;
-
-    if (find_joint_pwm_speeds(HIP, OUT) == -1)
-        return -1;
-
-    Serial.println("# Done, waiting...");
-    delay(1000);
+    calibrate_joint(HIP);
 
     /***********/
     /* END HIP */
     /***********/
+
+#endif
+
+#if 1
+    /********/
+    /* KNEE */
+    /********/
+
+    calibrate_joint(KNEE);
+
+    /************/
+    /* END KNEE */
+    /************/
+
+#endif
+
+#if 0
+    /*********/
+    /* THIGH */
+    /*********/
+
+    /* Move the knee all the way out first to avoid having the foot hit the ground. */
+    if (move_joint_all_the_way(KNEEPWM_EXTEND, 45) == -1)
+        return -1;
+
+    calibrate_joint(THIGH);
+
+    /* Now move the knee back in. */
+    if (move_joint_all_the_way(KNEEPWM_RETRACT, 45) == -1)
+        return -1;
+
+    /*************/
+    /* END THIGH */
+    /*************/
+
+#endif
 
     set_pwm_scale(60);
 

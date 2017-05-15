@@ -55,10 +55,9 @@ int func_jtest(void)
 }
 
 /*
- * This should move the foot goal x,y,z, and the foot should move to
- * match it.
+ * This makes the joystick control the individiual joints.
  */
-void do_joystick(void)
+void do_joystick_joints(void)
 {
     int i;
     int pwm;

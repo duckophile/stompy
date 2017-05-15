@@ -122,8 +122,8 @@ const char *joint_up_actions[]   = {"back",    "up",    "out"};
 const char *joint_down_actions[] = {"forward", "down",  "in"};
 
 int sensor_goals[3]    = {0,0,0};
-float xyz_goal[3]      = {0,0,0};
-float angle_goals[3]   = {0,0,0};
+double xyz_goal[3]     = {0,0,0};
+double angle_goals[3]  = {0,0,0};
 
 int goingHot[3]        = {0,0,0};
 
@@ -139,15 +139,18 @@ int valve_min_pwm_speed[6] = {-1, -1, -1, -1, -1, -1};
  * Hip angle is zero when the thigh is parallel to the ground
  * Knee angle is between thigh and calf (13 degrees fully retracted)
  */
-float current_deg[3];
-float current_rad[3];
+double current_deg[3];
+double current_rad[3];
 
 int sensorPin[3] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN};
 // this is the distance in sensor reading that is close enough for directed movement
 // I am putting this here so we can avoid chasing our tails early in positional control
 int closeEnough = 2;
 
-int joystick_mode = 0;
+#define JOYSTICK_OFF		0
+#define JOYSTICK_JOINT		1
+#define JOYSTICK_POSITION	2
+int joystick_mode = JOYSTICK_OFF;
 
 //Deadman button -- with the joystick I'll be using a momentary switch
 //on the panel.  It will need to be held down or jumpered to set the
@@ -156,39 +159,6 @@ int joystick_mode = 0;
 int deadMan = 0; //JOYSTICK is OFF if pin is low (pull high to enable joystick).
 int deadman_forced = 0; /* Ignore the deadman if this is set. */
 
-//values for home position of leg
-//x home is knee fully retracted (cylindar fully extended) i.e. large pot value
-//y home is thigh fully up (cylindar fully retracted) i.e. small pot value
-//z home is hip in the ~middle i.e. mid pot value
-int homePosition[] = {900, 200, 350};
-
-//Sensor reading to angle of joint block
-//These sensor values are for the right front leg
-
-#if 0
-int hipPotMax = 722;
-int hipPotMin = 93;
-#endif
-float hipAngleMin = -40.46;
-float hipAngleMax = 40.46;
-float hipSensorUnitsPerDeg;
-
-#if 0
-int thighPotMax = 917;
-int thighPotMin = 34;
-#endif
-float thighAngleMin = -6;
-float thighAngleMax = 84;
-float thighSensorUnitsPerDeg;
-
-#if 0
-int kneePotMax = 934;
-int kneePotMin = 148;
-#endif
-float kneeAngleMin = 13;
-float kneeAngleMax = 123;
-float kneeSensorUnitsPerDeg;
-
 // kinematics block
 /*  Forward kinematics for stompy
     x = cos(theta1) * [L1 + L2*cos(theta2) + L3*cos(theta2 + theta3 -180deg)]
@@ -196,21 +166,19 @@ float kneeSensorUnitsPerDeg;
     z = [L2 * sin(theta2)] + [L3 * sin(theta2 + theta3 - 180deg)]
 */
 
-//leg link lengths hip, thigh, and knee
-
+/* leg link lengths hip, thigh, and knee */
 #define L1		11
 #define L2		54
-/* Knee to ankle */
 #define L3		72
 
-#define HIP_LEN		11
-#define THIGH_LEN	54
-#define KNEE_LEN	72
+#define HIP_LEN		11	/* Hip pivot to thigh pivot. */
+#define THIGH_LEN	54	/* Thigh pivot to knee pivot. */
+#define KNEE_LEN	72	/* Knee pivot to ankle pivot. */
 
 #define X		0
 #define Y		1
 #define Z		2
-float current_xyz[3];
+double current_xyz[3];
 
 leg_info_t leg_info;
 
@@ -249,7 +217,7 @@ int read_sensor(int joint)
     return r2;
 }
 
-void print_xyz(float x, float y, float z)
+void print_xyz(double x, double y, double z)
 {
     Serial.print("(");
     Serial.print(x);
@@ -466,6 +434,19 @@ int func_deadman(void)
 int func_joystick(void)
 {
     return toggle_joystick_mode();
+}
+
+int func_joyxyz(void)
+{
+    if (joystick_mode == JOYSTICK_POSITION) {
+        Serial.print("\nJoystick mode disabled.\n\n");
+        joystick_mode = JOYSTICK_OFF;
+    } else {
+        joystick_mode = JOYSTICK_POSITION;
+        Serial.print("\nJoystick positional mode enabled.\n\n");
+    }
+
+    return 0;
 }
 
 void print_leg_info(leg_info_t *li)
@@ -710,12 +691,10 @@ int func_sensors(void)
 /*            n = n / 8; */	/* Fit 64K samples into 8192 buckets. */
             readings[n]++;
 
-/*
             Serial.print("\t");
             Serial.print(n);
-*/
         }
-/*        Serial.println("");*/
+        Serial.print("\n");
 
         if (Serial.available() > 0) {
             Serial.read();
@@ -791,6 +770,78 @@ int func_timing(void)
     return do_timing(direction, pwm);
 }
 
+int func_park(void)
+{
+    Serial.print("\nParking leg.\n");
+
+    disable_interrupts();
+
+    set_pwm_scale(100);
+
+    enable_leg();
+
+    /* Get thigh and knee into place. */
+
+    /* I should use a low speed PWM value if I have one. */
+    Serial.println("# Retracting thigh.");
+    if (move_joint_all_the_way(THIGHPWM_UP, 45) == -1)
+        return -1;
+
+    Serial.println("# Done, waiting...");
+    delay(1000);
+
+    Serial.println("# Retracting knee.");
+    /* Move knee up. */
+    if (move_joint_all_the_way(KNEEPWM_EXTEND, 45) == -1)
+        return -1;
+
+    Serial.println("# Done, waiting...");
+    delay(1000);
+
+    /* Center hip? */
+
+    /* Set the goal to wherever we are now. */
+    reset_current_location();
+
+    enable_interrupts();
+
+    Serial.print("Done.\n\n");
+
+    return 0;
+}
+
+int measure_speed(int joint, int direction, int pwm_goal, int verbose);
+
+int func_speed(void)
+{
+    int pwm;
+    int joint = HIP;
+    int rnd;
+    int direction;
+
+    srand(millis());
+
+    while (1) {
+        direction = IN;
+        pwm = LOW_PWM_MOVEMENT(joint + direction);
+        rnd = (rand() >> 1) & 0x1F;	/* 0-32 */
+        if (measure_speed(HIP, direction, pwm + rnd, 1) == -1)
+            break;
+
+        delay(400);
+
+        direction = OUT;
+        pwm = LOW_PWM_MOVEMENT(joint + direction);
+        rnd = (rand() >> 1) & 0x1F;	/* 0-32 */
+        if (measure_speed(HIP, direction, pwm + rnd, 1) == -1)
+            break;
+
+        delay(400);
+    }
+
+    return 0;
+}
+
 int func_go(void);
 
 struct {
@@ -810,14 +861,16 @@ struct {
     { "help",       func_help      },
     { "home",       func_none      }, /* Some neutral position?  Standing positioon maybe? */
     { "info",       func_info      },
+    { "joystick",   func_joystick  }, /* Enable jpoystick joint control mode. */
+    { "joyxyz",     func_joyxyz    }, /* Enable jpoystick positional mode. */
     { "jtest",      func_jtest     }, /* Print joystick values for calibration. */
     { "leginfo",    func_leginfo   }, /* Print leg paramters stored in memory. */
-    { "scale",      func_scale     }, /* Set max PWM value. */
-    { "joystick",   func_joystick  }, /* Enable jpoystick mode. */
     { "park",       func_none      }, /* Move leg to parked position. */
     { "pwm",        func_pwm       }, /* Set a PWM. */
     { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */
+    { "scale",      func_scale     }, /* Set max PWM value. */
     { "sensors",    func_sensors   }, /* Continuously read and print sensor readings. */
+    { "speed",      func_speed     }, /* Do speed test. */
     { "stop",       func_stop      }, /* Stop moving. */
     { "timing",     func_timing    }, /* Collect timing info. */
     { "where",      func_none      }, /* Print current x, y, z, and degrees. */
@@ -839,9 +892,9 @@ int read_int(void)
     return n;
 }
 
-float read_float(void)
+double read_double(void)
 {
-    float f;
+    double f;
     char *p;
 
     f = strtof(cmd_ptr, &p);
@@ -954,7 +1007,7 @@ void reset_current_location(void)
     /* Set our goal to the current position. */
     read_sensors(sensor_readings);
     calculate_angles(sensor_readings, current_deg);
-    calculate_xyz();
+    calculate_xyz(current_xyz, current_rad);
 
     xyz_goal[X] = current_xyz[X];
     xyz_goal[Y] = current_xyz[Y];
@@ -969,6 +1022,7 @@ void setup(void)
     /* Analog write resolution and PWM frequency. */
     analogWriteResolution(ANALOG_BITS);
     analogReadResolution(ANALOG_BITS);
+    analogReadAveraging(16);
 
     /* max PWM freqency of the motor driver board is 20kHz */
     set_pwm_freq(20000);
@@ -1005,54 +1059,6 @@ void setup(void)
     reset_current_location();
 
     Serial.println("Ready to rock and roll!\n");
-
-#if 0
-
-    EEPROM.write(0x101, 'o');
-    EEPROM.write(0x105, 'r');
-    EEPROM.write(0x103, 'b');
-    EEPROM.write(0x100, 'f');
-    EEPROM.write(0x102, 'o');
-    EEPROM.write(0x104, 'a');
-
-    char p;
-
-    p = EEPROM.read(0x100);
-    Serial.print(p);
-    p = EEPROM.read(0x101);
-    Serial.print(p);
-    p = EEPROM.read(0x102);
-    Serial.print(p);
-    p = EEPROM.read(0x103);
-    Serial.print(p);
-    p = EEPROM.read(0x104);
-    Serial.print(p);
-    p = EEPROM.read(0x105);
-    Serial.print(p);
-    Serial.println("");
-
-    uint8_t *q;
-    int n;
-
-    q = (uint8_t *)0x14000000;  /* Address of flash - or FlexRam? */
-    for (n = 0;n < 1024;n++) {
-        if (!strncmp((char *)&q[n], "foobar", 6)) {
-            Serial.print("Found it at ");
-            Serial.println(n);
-            break;
-        }
-    }
-
-    /* 0xD150 = 53584. */
-
-    for (int x = n - 10;x < n + 256;x++) {
-        Serial.print(" ");
-        if (isprint(q[x]))
-            Serial.print(q[x]);
-        else
-            Serial.print((int)q[x]);
-    }
-#endif
 
     return;
 }
@@ -1157,12 +1163,12 @@ void write_pwms(void)
     }
 }
 
-int read_xyz(float *xyz)
+int read_xyz(double *xyz)
 {
     // look for first valid integar to be x
-    xyz[X] = read_float();
-    xyz[Y] = read_float();
-    xyz[Z] = read_float();
+    xyz[X] = read_double();
+    xyz[Y] = read_double();
+    xyz[Z] = read_double();
 
     if (xyz[X] == 0) {
         xyz[X] = xyz[X] + .0001;
@@ -1226,12 +1232,17 @@ void thing(int n)
         done = 1;
 }
 
-#if 0
+#if 1
+/*
+ * Loop for velocity control.
+ *
+ * All the actual work is done in the interrupt thread.
+ */
 void loop(void)
 {
     static int last_seconds = 0;
     int seconds;
-    static float last_x_inches, last_y_inches, last_z_inches;
+    static double last_x_inches, last_y_inches, last_z_inches;
 
     /*
      * If debug_flag > 0 then it specifies the number of times through
@@ -1295,7 +1306,7 @@ void loop(void)
 {
     static int last_seconds = 0;
     int seconds;
-    static float last_x_inches, last_y_inches, last_z_inches;
+    static double last_x_inches, last_y_inches, last_z_inches;
 
     /*
      * If debug_flag > 0 then it specifies the number of times through
@@ -1327,12 +1338,12 @@ void loop(void)
     /* Turn sensor readings into joint angles. */
     calculate_angles(sensor_readings, current_deg);
     /* Turn joint angles into (x,y,z). */
-    calculate_xyz();
+    calculate_xyz(current_xyz, current_rad);
 
     /* Joystic mode should move the desired x,y,z, but only after I fix positional. */
-    if (joystick_mode) {
+    if (joystick_mode == JOYSTICK_JOINT) {
         /* In joystick mode the joystick controls the PWMs. */
-        do_joystick();
+        do_joystick_joints();
     } else {
         /* Write something to the PWMs to make the leg move. */
         write_pwms();
@@ -1374,11 +1385,11 @@ void loop(void)
 /*
  * The 'go' command.
  *
- * Takes 3 floats for (x,y,z) goal.
+ * Takes 3 doubles for (x,y,z) goal.
  */
 int func_go(void)
 {
-    float xyz[3];
+    double xyz[3];
 
     joystick_mode = 0;
 
