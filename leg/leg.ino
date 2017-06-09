@@ -1085,11 +1085,6 @@ void setup(void)
 
     pinMode(HIPPWM_REVERSE_PIN, OUTPUT);
 
-    /* Copy stored leg params from eeprom. */
-    memcpy(&leg_info, (void *)0x14000000, sizeof(leg_info));
-
-    delay(2000); /* Give the serial console time to come up. */
-
     disable_leg();
 
     delay(2000); /* Give the serial console time to come up. */
