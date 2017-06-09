@@ -21,9 +21,9 @@ typedef struct __attribute__((packed)) {
 } sensor_limits_t;
 
 typedef struct __attribute__((packed)) {
-    double angle_high;
-    double angle_low;
-    double units_per_deg;
+    float angle_high;
+    float angle_low;
+    float units_per_deg;
 } joint_angles_t;
 
 /* One of these for each of 6 valves. */

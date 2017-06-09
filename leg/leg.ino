@@ -513,9 +513,8 @@ void print_leg_info(leg_info_t *li)
     return;
 }
 
-void fudge_blank_flash_values(void)
+void fixup_blank_flash_values(void)
 {
-    return;
 
     ANGLE_LOW(HIP)    = -40.46;
     ANGLE_HIGH(HIP)   = 40.46;
@@ -542,15 +541,23 @@ void fudge_blank_flash_values(void)
 #endif
 
     /*
+     * If any of the sensor parameters aren't set then fudge them.
+     *
      * These shouldn't be as high or low as the real values, to make
      * sure that we actually set them.
      */
-    SENSOR_LOW(HIP)    = 130;
-    SENSOR_HIGH(HIP)   = 690;
-    SENSOR_LOW(THIGH)  = 60;
-    SENSOR_HIGH(THIGH) = 890;
-    SENSOR_LOW(KNEE)   = 170;
-    SENSOR_HIGH(KNEE)  = 900;
+    if (SENSOR_LOW(HIP)    == 0xFFFF)
+        SENSOR_LOW(HIP)    = 130;
+    if (SENSOR_HIGH(HIP)   == 0xFFFF)
+        SENSOR_HIGH(HIP)   = 690;
+    if (SENSOR_LOW(THIGH)  == 0xFFFF)
+        SENSOR_LOW(THIGH)  = 60;
+    if (SENSOR_HIGH(THIGH) == 0xFFFF)
+        SENSOR_HIGH(THIGH) = 890;
+    if (SENSOR_LOW(KNEE)   == 0xFFFF)
+        SENSOR_LOW(KNEE)   = 170;
+    if (SENSOR_HIGH(KNEE)  == 0xFFFF)
+        SENSOR_HIGH(KNEE)  = 900;
 
     UNITS_PER_DEG(HIP)   = (SENSOR_HIGH(HIP)   - SENSOR_LOW(HIP))   / (ANGLE_HIGH(HIP)   - ANGLE_LOW(HIP));
     UNITS_PER_DEG(THIGH) = (SENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / (ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH));
@@ -573,7 +580,7 @@ void read_leg_info(leg_info_t *li)
 
     /* If the flash is empty then fudge the numbers. */
     if (SENSOR_LOW(HIP) == 0xFFFF)
-        fudge_blank_flash_values();
+        Serial.print("\n\nLeg parameters in flash appears to not be populated!\n\n");
 
     return;
 }
@@ -1010,13 +1017,40 @@ int func_help(void)
 
 /*
  * Reads the sensors and sets the x,y,z goal to the current location.
+ *
+ * XXX fixme:  This should use local variables.
  */
 void reset_current_location(void)
 {
+    int i;
+
     /* Set our goal to the current position. */
     read_sensors(sensor_readings);
+
+    Serial.print("Sensors:");
+    for (i = 0; i < 3;i++) {
+        Serial.print('\t');
+        Serial.print(sensor_readings[i]);
+    }
+    Serial.print('\n');
+
     calculate_angles(sensor_readings, current_deg);
+
+    Serial.print("Angles: ");
+    for (i = 0; i < 3;i++) {
+        Serial.print('\t');
+        Serial.print(current_deg[i]);
+    }
+    Serial.print('\n');
+
     calculate_xyz(current_xyz, current_rad);
+
+    Serial.print("Location:");
+    for (i = 0; i < 3;i++) {
+        Serial.print('\t');
+        Serial.print(current_xyz[i]);
+    }
+    Serial.print('\n');
 
     xyz_goal[X] = current_xyz[X];
     xyz_goal[Y] = current_xyz[Y];
@@ -1054,20 +1088,40 @@ void setup(void)
     /* Copy stored leg params from eeprom. */
     memcpy(&leg_info, (void *)0x14000000, sizeof(leg_info));
 
-    print_leg_info(&leg_info);
-
-    //sensor units per deg
-#if 0
-    UNITS_PER_DEG(HIP) = (hipSENSOR_HIGH(HIP) - SENSOR_LOW(HIP)) / (ANGLE_HIGH(HIP) - ANGLE_LOW(HIP));
-    UNITS_PER_DEG(THIGH) = (thighSENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / (ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH));
-    UNITS_PER_DEG(KNEE) = (kneeSENSOR_HIGH(KNEE) - SENSOR_LOW(KNEE)) / (ANGLE_HIGH(KNEE) - ANGLE_LOW(KNEE));
-#endif
+    delay(2000); /* Give the serial console time to come up. */
 
     disable_leg();
 
     delay(2000); /* Give the serial console time to come up. */
 
     read_leg_info(&leg_info);
+
+    print_leg_info(&leg_info);
+
+    fixup_blank_flash_values();
+
+#if 0
+    /* sensor units per degree */
+    UNITS_PER_DEG(HIP) = (SENSOR_HIGH(HIP) - SENSOR_LOW(HIP)) / ((ANGLE_HIGH(HIP) - ANGLE_LOW(HIP)));
+    Serial.print("units_per_deg = ");
+    Serial.print(UNITS_PER_DEG(HIP));
+
+    Serial.print(' ');
+    Serial.print(SENSOR_HIGH(HIP));
+    Serial.print(' ');
+    Serial.print(SENSOR_LOW(HIP));
+    Serial.print(' ');
+    Serial.print(UNITS_PER_DEG(HIP));
+    Serial.print(' ');
+    Serial.print(ANGLE_LOW(HIP));
+    Serial.print(' ');
+    Serial.print(ANGLE_HIGH(HIP));
+    Serial.print(' ');
+    Serial.print('\n');
+
+    UNITS_PER_DEG(THIGH) = (SENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / ((ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH)));
+    UNITS_PER_DEG(KNEE) = (SENSOR_HIGH(KNEE) - SENSOR_LOW(KNEE)) / ((ANGLE_HIGH(KNEE) - ANGLE_LOW(KNEE)));
+#endif
 
     reset_current_location();
 
