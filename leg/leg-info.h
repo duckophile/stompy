@@ -1,3 +1,6 @@
+#ifndef _LEG_INFO_
+#define _LEG_INFO_
+
 /*
  * I may also want to store something about temperature compensation.
  * Maybe sensor jitter too?
@@ -44,6 +47,7 @@ typedef struct __attribute__((packed)) {
     joint_angles_t joint_angles[NR_SENSORS];
 /*    valve_param_t valves[NR_PRESSURES];*/
     valve_param_t valves[NR_VALVES];
+    char name[16];
 } leg_info_t;
 
 #define ANGLE_LOW(__joint)        leg_info.joint_angles[__joint].angle_low
@@ -63,3 +67,5 @@ typedef struct __attribute__((packed)) {
 #define LOW_PWM_MOVEMENT(__valve) leg_info.valves[__valve].low_joint_movement
 
 #define JOINT_SPEED(__valve, __pwm) leg_info.valves[__valve].joint_speed[__pwm]
+
+#endif /* _LEG_INFO_ */

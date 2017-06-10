@@ -176,6 +176,10 @@ double current_xyz[3];
 
 leg_info_t leg_info;
 
+char cmd_buf[128];
+int cmd_len = 0;
+char *cmd_ptr;
+
 /*
  * Take three threadings and return the middle one.  This should
  * remove some sensor jitter.
@@ -576,11 +580,11 @@ void read_leg_info(leg_info_t *li)
     Serial.print(sizeof(leg_info_t));
     Serial.println(" bytes of saved leg data.");
 
-    /* I need something to hack in defaults for unset but needed parameters. */
+    if (li->name[0] == 0xFF)
+        memcpy(li->name, "leg", 4);
 
-    /* If the flash is empty then fudge the numbers. */
     if (SENSOR_LOW(HIP) == 0xFFFF)
-        Serial.print("\n\nLeg parameters in flash appears to not be populated!\n\n");
+        Serial.print("\n\nLeg calibration parameters in flash appears to unpopulated!\n\n");
 
     return;
 }
@@ -639,6 +643,13 @@ int func_eraseflash(void)
     erase_leg_info();
 
     Serial.println("Flash parameters erased.\n");
+
+    return 0;
+}
+
+int func_name(void)
+{
+    strncpy(leg_info.name, cmd_ptr, 14);
 
     return 0;
 }
@@ -891,6 +902,7 @@ struct {
     { "jtest",      func_jtest     }, /* Print joystick values for calibration. */
     { "kneecal",    func_kneecal   }, /* Run knee calibration. */
     { "leginfo",    func_leginfo   }, /* Print leg paramters stored in memory. */
+    { "name",       func_name      }, /* Nmme the leg. */
     { "park",       func_none      }, /* Move leg to parked position. */
     { "pwm",        func_pwm       }, /* Set a PWM. */
     { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */
@@ -903,10 +915,6 @@ struct {
     { "where",      func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,         NULL           }
 };
-
-char cmd_buf[128];
-int cmd_len = 0;
-char *cmd_ptr;
 
 int read_int(void)
 {
@@ -938,7 +946,10 @@ void read_cmd(void)
     static int prompted = 0;
 
     if (!prompted) {
-        Serial.print("bash$ ");
+        if (leg_info.name[0] == 0xFF)
+            Serial.print("bash$ ");
+        else
+            Serial.print(leg_info.name);
         prompted = 1;
     }
 
