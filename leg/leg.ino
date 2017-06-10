@@ -757,9 +757,18 @@ int func_stop(void)
     return 0;
 }
 
-int func_calibrate(void)
+int func_hipcal(void)
 {
-    return calibrate();
+    return calibrate_joint(HIP);
+}
+
+int func_kneecal(void)
+{
+    return calibrate_joint(KNEE);
+}
+int func_thighcal(void)
+{
+    return calibrate_joint(THIGH);
 }
 
 int func_enable(void)
@@ -864,10 +873,9 @@ struct {
     int (*func)();
 } cmd_table[] = {
     { "bleed",      func_bleed     },
-    { "calibrate",  func_calibrate },
     { "deadman",    func_deadman   }, /* Ignore the deadman. */
     { "dbg",        func_dbg       }, /* Enable debug once. */
-    { "debug",      func_debug     },
+    { "debug",      func_debug     }, /* Enable debugging output. */
     { "dither",     func_none      }, /* Set the dither amount. */
     { "enable",     func_enable    }, /* Enable the leg, allowing it to move. */
     { "eraseflash", func_eraseflash}, /* Erase the parameters saved in flash. */
@@ -875,11 +883,13 @@ struct {
     { "freq",       func_none      }, /* Set PWM frequency. */
     { "go",         func_go        }, /* goto given x, y, z. */
     { "help",       func_help      },
+    { "hipcal",     func_hipcal    }, /* Run hip calibration. */
     { "home",       func_none      }, /* Some neutral position?  Standing positioon maybe? */
     { "info",       func_info      },
     { "joystick",   func_joystick  }, /* Enable jpoystick joint control mode. */
     { "joyxyz",     func_joyxyz    }, /* Enable jpoystick positional mode. */
     { "jtest",      func_jtest     }, /* Print joystick values for calibration. */
+    { "kneecal",    func_kneecal   }, /* Run knee calibration. */
     { "leginfo",    func_leginfo   }, /* Print leg paramters stored in memory. */
     { "park",       func_none      }, /* Move leg to parked position. */
     { "pwm",        func_pwm       }, /* Set a PWM. */
@@ -888,6 +898,7 @@ struct {
     { "sensors",    func_sensors   }, /* Continuously read and print sensor readings. */
     { "speed",      func_speed     }, /* Do speed test. */
     { "stop",       func_stop      }, /* Stop moving. */
+    { "thighcal",   func_thighcal  }, /* Run thigh calibration. */
     { "timing",     func_timing    }, /* Collect timing info. */
     { "where",      func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,         NULL           }
