@@ -654,6 +654,17 @@ int func_name(void)
     return 0;
 }
 
+#define CPU_RESTART_ADDR (uint32_t *)0xE000ED0C
+#define CPU_RESTART_VAL 0x5FA0004
+#define CPU_RESTART (*CPU_RESTART_ADDR = CPU_RESTART_VAL)
+
+int func_reset(void)
+{
+    CPU_RESTART;
+
+    return 0;
+}
+
 /*
  * Show sensor jitter.
  *
@@ -905,6 +916,7 @@ struct {
     { "name",       func_name      }, /* Nmme the leg. */
     { "park",       func_none      }, /* Move leg to parked position. */
     { "pwm",        func_pwm       }, /* Set a PWM. */
+    { "reset",      func_reset     }, /* Reset and reboot the teensy. */
     { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */
     { "scale",      func_scale     }, /* Set max PWM value. */
     { "sensors",    func_sensors   }, /* Continuously read and print sensor readings. */
@@ -948,8 +960,10 @@ void read_cmd(void)
     if (!prompted) {
         if (leg_info.name[0] == 0xFF)
             Serial.print("bash$ ");
-        else
+        else {
             Serial.print(leg_info.name);
+            Serial.print("> ");
+        }
         prompted = 1;
     }
 
