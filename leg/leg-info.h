@@ -48,6 +48,8 @@ typedef struct __attribute__((packed)) {
 /*    valve_param_t valves[NR_PRESSURES];*/
     valve_param_t valves[NR_VALVES];
     char name[16];
+    uint8_t leg_number;
+    uint8_t padding[3];
 } leg_info_t;
 
 #define ANGLE_LOW(__joint)        leg_info.joint_angles[__joint].angle_low
