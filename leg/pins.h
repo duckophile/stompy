@@ -1,3 +1,6 @@
+#ifndef __PINS_H__
+#define __PINS_H__
+
 /* Joystick */
 
 #ifdef OLD_BOARD
@@ -38,3 +41,5 @@
 #define M1FB_PIN		21
 #define M2FB_PIN		22
 #define M1FB_HIP_PIN		23
+
+#endif /* __PINS_H__ */

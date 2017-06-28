@@ -43,11 +43,15 @@ void disable_interrupts(void)
     PIT_TCTRL0 &= ~TEN;
     PIT_TFLG0 &= ~1;
 
+    interrupts_enabled = 0;
+
     return;
 }
 
 void enable_interrupts(void)
 {
+    interrupts_enabled = 1;
+
     PIT_TCTRL0 = TIE;
     PIT_TCTRL0 |= TEN;
     PIT_TFLG0 |= 1;

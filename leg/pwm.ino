@@ -5,7 +5,7 @@
  * into this module while the interrupt-driven routine is running.
  */
 static int pwm_goals[6] = {0};
-int current_pwms[6] = {0};
+int current_pwms[6] = { 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF};
 static int pwm_scale = 60;
 
 void set_pwm_freq(int freq)
@@ -40,69 +40,70 @@ void set_pwm_scale(int scale)
  * joints.  This takes a valve number (0-5) instead of a joint number
  * (0-2).
  */
-void set_pwm(int pwm_id, int value)
+void set_pwm(int pwm_id, int percent)
 {
-    int scaled;
+    int normalized;
 
-    if (value > 100) {
-        Serial.print("PWM value ");
-        Serial.print(value);
-        Serial.println(" is invalid.");
+    if (percent > 100) {
+        Serial.print("\nERROR: PWM percent ");
+        Serial.print(percent);
+        Serial.print(" is invalid.\n\n");
         return;
     }
-
     if ((pwm_id > 5) || (pwm_id < 0)) {
-        Serial.print("pwm_id ");
+        Serial.print("\nERROR: pwm_id ");
         Serial.print(pwm_id);
-        Serial.println(" is invalid!");
+        Serial.print(" is invalid!\n\n");
         return;
     }
 
-#if 0
-    Serial.print("Value in: ");
-    Serial.print(value);
-#endif
-
-    scaled = (value * PWM_MAX) / 100; /* Normalize to 10 bits. */
-    if (scaled > PWM_MAX)
-        scaled = PWM_MAX;
+    normalized = (percent * PWM_MAX) / 100; /* Normalize to 10 bits. */
+    if (normalized > PWM_MAX)
+        normalized = PWM_MAX;
 
 #if 0
-    Serial.print(" ? bit value: ");
-    Serial.print(scaled);
+    /* Write the normalized, normalized PWM percent to the PWM. */
+    if (normalized == 0) {
+        Serial.print("Writing 0 to PWM ");
+        Serial.print(pwm_id);
+        Serial.print("\n");
+        analogWrite(pwm_pins[pwm_id], 0);
+    }
 #endif
 
-    scaled = (scaled * pwm_scale) / 100; /* Scale. */
-#if 0
-    Serial.print(" scaled value: ");
-    Serial.println(scaled);
-#endif
-
-    /* Write the normalized, scaled PWM value to the PWM. */
-    if ((value == 0) || (deadMan != 0) || (!deadman_forced != 0)) {
+    if ((normalized == 0) || (deadMan || !deadman_forced != 0)) {
 #if 0
         Serial.print("PWM ");
         Serial.print(pwm_id);
         Serial.print(" pin ");
         Serial.print(pwm_pins[pwm_id]);
         Serial.print(" set to ");
-        Serial.println(scaled);
+        Serial.println(normalized);
 #endif
-        analogWrite(pwm_pins[pwm_id], scaled);
+        if (normalized != 0) {
+            Serial.print("Writing ");
+            Serial.print(normalized);
+            Serial.print(" to PWM ");
+            Serial.print(pwm_id);
+            Serial.print(" (");
+            Serial.print(percent);
+            Serial.print("% requested)\n");
+        }
+        analogWrite(pwm_pins[pwm_id], normalized);
     }
 
-    if ((current_pwms[pwm_id] != value) && (value != 0)) {
+    if ((current_pwms[pwm_id] != percent) && (percent != 0)) {
         DEBUG("PWM ");
         DEBUG(pwm_id);
         DEBUG(" pin ");
         DEBUG(pwm_pins[pwm_id]);
-        DEBUG(" scaled from ");
-        DEBUG(value);
+        DEBUG(" normalized from ");
+        DEBUG(percent);
         DEBUG(" to ");
-        DEBUGLN(scaled);
+        DEBUGLN(normalized);
     }
     /* Save the requested PWM percentage, not scaled or normalized. */
-    current_pwms[pwm_id] = value;
+    current_pwms[pwm_id] = percent;
 
     return;
 }
@@ -127,16 +128,18 @@ void set_pwm_goal(int pwm_id, int value)
 */
 
     if (value > 100) {
-        Serial.print("PWM value ");
+        Serial.print("ERROR PWM value ");
         Serial.print(value);
-        Serial.println(" is invalid.");
+        Serial.print(" is invalid for PWM ");
+        Serial.print(pwm_id);
+        Serial.print('\n');
         return;
     }
 
     if ((pwm_id > 5) || (pwm_id < 0)) {
-        Serial.print("pwm_id ");
+        Serial.print("ERROR: pwm_id ");
         Serial.print(pwm_id);
-        Serial.println(" is invalid!");
+        Serial.print(" is invalid!\n");
         return;
     }
 
@@ -192,8 +195,6 @@ void adjust_pwms(void)
 void pwms_off(void)
 {
     int i;
-
-    Serial.println("Turning all PWMs off.");
 
     for (i = 0;i < 6;i++)
         set_pwm_goal(i, 0);

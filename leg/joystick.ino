@@ -23,6 +23,8 @@ int toggle_joystick_mode(void)
     joystick_mode = !joystick_mode;
 
     pwms_off(); /* Stop moving the leg. */
+    enable_leg();
+    disable_interrupts();
     reset_current_location(); /* Current XYZ is new goal. */
 
     Serial.print("Joystick ");
@@ -68,10 +70,15 @@ void do_joystick_joints(void)
     for (i = 0;i < 3;i++)
         joystick_values[i] = analogRead(joystick_pins[i]);
 
+    /* Ignore a joystick value of < 10 to account for inaccorate centering. */
+    for (i = 0;i < 3;i++)
+        if (abs(JOYSTICK_MID - joystick_values[i]) < 20)
+            joystick_values[i] = JOYSTICK_MID;
+
     /* Adjust the PWMs based on the values read. */
     for (i = 0;i < 3;i++) {
         /*
-         * The joystick midpoint is 512, but we want a PWM percentage
+         * The joystick midpoint is ~512, but we want a PWM percentage
          * from 0-100 and a direction (or a valve number if not a
          * direction).
          */
@@ -123,7 +130,7 @@ void do_joystick_joints(void)
 
         Serial.print("Joint sensors: : ");
         for (i = 0;i < 3;i++) {
-            Serial.print(sensor_readings[i]);
+            Serial.print(current_sensor[i]);
             Serial.print("\t");
         }
         Serial.print("\n");

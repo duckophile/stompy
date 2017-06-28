@@ -60,14 +60,17 @@ typedef struct __attribute__((packed)) {
 #define SENSOR_LOW(__joint)       leg_info.sensor_limits[__joint].sensor_low
 #define SENSOR_HIGH(__joint)      leg_info.sensor_limits[__joint].sensor_high
 
+#define LEG_NUMBER()              leg_info.leg_number
+#define LEG_NAME()                leg_info.name
+
 /*
  * There are six valves and three joints.  The valves are arranged (in
  * software) as three valves for moving out and three valves for
  * moving in.  OUT = 0, IN = 3, so (joint + direction) = valve.
  */
 
-#define LOW_PWM_MOVEMENT(__valve) leg_info.valves[__valve].low_joint_movement
-
+#define LOW_PWM_MOVEMENT(__valve)   leg_info.valves[__valve].low_joint_movement
 #define JOINT_SPEED(__valve, __pwm) leg_info.valves[__valve].joint_speed[__pwm]
+#define JOINT_MAX_SPEED(__valve)    JOINT_SPEED(__valve, 10)
 
 #endif /* _LEG_INFO_ */
