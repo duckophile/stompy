@@ -34,15 +34,16 @@ void set_pwm_scale(int scale)
 /*
  * This writes the value to the PWM, with no slow-start.
  *
- * The value is a percentage - 0-100.
+ * The value is a percentage (0-100), and is saved in current_pwms[].
  *
  * The PWM numbering is wacky, since there are six PWMs for three
  * joints.  This takes a valve number (0-5) instead of a joint number
  * (0-2).
  */
-void set_pwm(int pwm_id, int percent)
+void set_pwm(int valve, int percent)
 {
     int normalized;
+    int other_valve;
 
     if (percent > 100) {
         Serial.print("\nERROR: PWM percent ");
@@ -50,12 +51,20 @@ void set_pwm(int pwm_id, int percent)
         Serial.print(" is invalid.\n\n");
         return;
     }
-    if ((pwm_id > 5) || (pwm_id < 0)) {
+    if ((valve > 5) || (valve < 0)) {
         Serial.print("\nERROR: pwm_id ");
-        Serial.print(pwm_id);
+        Serial.print(valve);
         Serial.print(" is invalid!\n\n");
         return;
     }
+
+    /* Turn the opposing valve off. */
+    if (valve >= 3)
+        other_valve = valve - 3;
+    else
+        other_valve = valve + 3;
+    analogWrite(pwm_pins[other_valve], 0);
+    current_pwms[other_valve] = 0;
 
     normalized = (percent * PWM_MAX) / 100; /* Normalize to 10 bits. */
     if (normalized > PWM_MAX)
@@ -65,45 +74,47 @@ void set_pwm(int pwm_id, int percent)
     /* Write the normalized, normalized PWM percent to the PWM. */
     if (normalized == 0) {
         Serial.print("Writing 0 to PWM ");
-        Serial.print(pwm_id);
+        Serial.print(valve);
         Serial.print("\n");
-        analogWrite(pwm_pins[pwm_id], 0);
+        analogWrite(pwm_pins[valve], 0);
     }
 #endif
 
     if ((normalized == 0) || (deadMan || !deadman_forced != 0)) {
 #if 0
         Serial.print("PWM ");
-        Serial.print(pwm_id);
+        Serial.print(valve);
         Serial.print(" pin ");
-        Serial.print(pwm_pins[pwm_id]);
+        Serial.print(pwm_pins[valve]);
         Serial.print(" set to ");
         Serial.println(normalized);
 #endif
         if (normalized != 0) {
+#if 0
             Serial.print("Writing ");
             Serial.print(normalized);
             Serial.print(" to PWM ");
-            Serial.print(pwm_id);
+            Serial.print(valve);
             Serial.print(" (");
             Serial.print(percent);
             Serial.print("% requested)\n");
+#endif
         }
-        analogWrite(pwm_pins[pwm_id], normalized);
+        analogWrite(pwm_pins[valve], normalized);
     }
 
-    if ((current_pwms[pwm_id] != percent) && (percent != 0)) {
+    if ((current_pwms[valve] != percent) && (percent != 0)) {
         DEBUG("PWM ");
-        DEBUG(pwm_id);
+        DEBUG(valve);
         DEBUG(" pin ");
-        DEBUG(pwm_pins[pwm_id]);
+        DEBUG(pwm_pins[valve]);
         DEBUG(" normalized from ");
         DEBUG(percent);
         DEBUG(" to ");
         DEBUGLN(normalized);
     }
     /* Save the requested PWM percentage, not scaled or normalized. */
-    current_pwms[pwm_id] = percent;
+    current_pwms[valve] = percent;
 
     return;
 }
