@@ -237,7 +237,7 @@ void print_xyz(double xyz[3])
 
 int func_none(void)
 {
-    Serial.println("Not implemented.");
+    Serial.println("ERROR - Not implemented.");
 
     return 0;
 }
@@ -310,6 +310,7 @@ int func_dbg(void)
 
 extern int current_pwms[];
 
+/* XXX fixme:  Unused. */
 void print_current(void)
 {
     int i;
@@ -359,6 +360,7 @@ void print_current(void)
     return;
 }
 
+/* XXX fixme:  Unused. */
 void print_goals(void)
 {
     int i;
@@ -397,7 +399,7 @@ int func_info(void)
     Serial.print("# Current info:\n#\n");
     Serial.print("# Leg number ");
     Serial.print(leg_info.leg_number);
-    Serial.print(" Leg name \"");
+    Serial.print(" named \"");
     Serial.print(leg_info.name);
     Serial.print("\" Deadman: ");
     Serial.print(deadMan);
@@ -492,6 +494,8 @@ int func_info(void)
 
 int func_deadman(void)
 {
+    pwms_off();
+
     deadman_forced = !deadman_forced;
 
     Serial.print("Deadman ");
@@ -593,6 +597,12 @@ void print_leg_info(leg_info_t *li)
     return;
 }
 
+/*
+ * This replaces some empty values in the leg_info struct with fake
+ * values, in hopes of keeping some arithmetic from going haywire.
+ * Ideally there'd be something to prevent the use of empty flash, but
+ * that'll have to come later.
+ */
 void fixup_blank_flash_values(void)
 {
     int i;
@@ -702,7 +712,7 @@ int func_flashinfo(void)
 
     read_leg_info(&li);
 
-    Serial.println("Leg parameters stored in flash:");
+    Serial.println("# Leg parameters stored in flash:");
     print_leg_info(&li);
 
     return 0;
@@ -710,7 +720,7 @@ int func_flashinfo(void)
 
 int func_leginfo(void)
 {
-    Serial.println("Leg parameters in memory and maybe not yet in flash:");
+    Serial.println("# Leg parameters in memory and maybe not yet in flash:");
     print_leg_info(&leg_info);
 
     return 0;
@@ -1639,7 +1649,7 @@ int func_go(void)
 
     joystick_mode = 0;
 
-    Serial.print("\n----------------------------------------------------------------\n");
+    Serial.print("\n# ----------------------------------------------------------------\n");
 
     old_debug_flag = debug_flag;
     debug_flag = 1;	/* Enable debugging for one loop. */
@@ -1657,18 +1667,18 @@ int func_go(void)
      */
     inverse_kin(xyz, sensor_goal, deg_goals);
 
-    Serial.print("\nNew Goals: (x,y,z):\t");
+    Serial.print("\n# New Goals: (x,y,z):\t");
     print_xyz(xyz);
-
     Serial.print('\n');
-    Serial.print("Goal angles (deg):    ");
+
+    Serial.print("# Goal angles (deg):    ");
     for (i = 0;i < 3;i++) {
         Serial.print('\t');
         Serial.print(deg_goals[i]);
     }
-
     Serial.print('\n');
-    Serial.print("Sensor goals:          ");
+
+    Serial.print("# Sensor goals:          ");
     for (i = 0;i < 3;i++) {
         Serial.print('\t');
         Serial.print(sensor_goal[i]);
@@ -1682,7 +1692,7 @@ int func_go(void)
 
     velocity_debug = 1;
 
-    Serial.print("----------------------------------------------------------------\n\n");
+    Serial.print("# ----------------------------------------------------------------\n\n");
 
     return 0;
 }
@@ -1695,13 +1705,11 @@ void disable_leg()
 {
     leg_enabled = 0;
 
-    Serial.print("\n**************** Disabling leg. ****************\n\n");
-
     digitalWrite(ENABLE_PIN, LOW);
     digitalWrite(ENABLE_PIN_HIP, LOW);
     pwms_off();
 
-    Serial.println("Leg disabled.");
+    Serial.print("\n# **************** Disabling leg. ****************\n\n");
 
     return;
 }
