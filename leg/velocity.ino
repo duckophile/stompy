@@ -791,7 +791,7 @@ void velocity_loop(void)
     /* Write the PWMs to make the leg move. */
     if (distance < 1.0) /* We're there! */ {
         if (!pwms_turned_off) {
-            Serial.print("Leg is close enough to goal, so turning PWMs off.\n");
+            Serial.print("# Leg is close enough to goal, so turning PWMs off.\n");
             pwms_off();
             pwms_turned_off = 1;
         }
