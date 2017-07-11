@@ -81,7 +81,7 @@ int move_joint_all_the_way(int valve, int pwm_percent)
 
     sensor_num = valve;
     /* Sensor number is 0-2. */
-    if (sensor_num >= 3) {
+    if (sensor_num > 2) {
         sensor_num = sensor_num - 3;
         out = 1;	/* Sensor reading should be going up?  Hopefully? */
         Serial.print("Sensor value should be increasing.\n");
@@ -90,7 +90,7 @@ int move_joint_all_the_way(int valve, int pwm_percent)
         Serial.print("Sensor value should be decreasing.\n");
     }
 
-    Serial.print("Calibrating valve ");
+    Serial.print("Setting valve ");
     Serial.print(valve);
     Serial.print(" PWM pin ");
     Serial.print(pwm_pins[valve]);
@@ -320,9 +320,6 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
     Serial.print("# Writing PWM percentage ");
     Serial.print(current_pwm);
     Serial.print('\n');
-
-    if ((joint == KNEE) && (direction == IN))
-        Serial.print("**** This is KNEE IN! ****\n");
 
     if (joint == KNEE)
         no_change_limit = 300;	/* Knee needs longer due to gravity crossing. */
@@ -1468,7 +1465,7 @@ int find_joint_limits(int joint, int direction)
 {
     int i;
 
-    /* I might need to move the joint into position if it's against the wrong end. */
+    /* XXX fixme: I need to move the joint into position if it's against the wrong end. */
 
     /* Find first movement to 10% granularity. */
     i = find_joint_first_movement(joint, direction, 10, 10);
@@ -1492,6 +1489,137 @@ int find_joint_limits(int joint, int direction)
     }
 
     return 0;
+}
+
+int set_joint_limits(int joint)
+{
+    int rc = -1;
+
+    pwms_off();
+
+    if (!check_deadman()) {
+        Serial.print("ERROR: Deadman has leg disabled!\n");
+        return -1;
+    }
+
+    disable_interrupts();
+
+    set_pwm_scale(100);
+
+    enable_leg();
+
+    /* Get thigh and knee into place. */
+
+    /* I should use a low speed PWM value if I have one. */
+    Serial.print("# Retracting thigh.\n");
+    if (move_joint_all_the_way(THIGHPWM_UP, 50) == -1)
+        goto fail;
+
+    Serial.print("# Done, waiting...\n");
+    delay(1000);
+
+    Serial.print("# Retracting knee.\n");
+    /* Move knee up. */
+    if (move_joint_all_the_way(KNEEPWM_RETRACT, 50) == -1)
+        goto fail;
+
+    delay(1000);
+    Serial.print("# Bleeding knee.\n");
+    if (move_joint_all_the_way(KNEEPWM_RETRACT, 100) == -1)
+        goto fail;
+
+    Serial.print("# Done, waiting...\n");
+    delay(1000);
+
+    switch(joint) {
+    case HIP:
+        /* This does IN first, so move the joint OUT. */
+        if (move_joint_all_the_way(HIPPWM_REVERSE, 50) == -1)
+            goto fail;
+        break;
+
+    case KNEE:
+        /* Nothing special to do. */
+        break;
+
+    case THIGH:
+        /* Move the knee all the way out first to avoid having the foot hit the ground. */
+        /*
+         * XXX fixme: The results will presumably be very different
+         * with the knee extended vs. retracted.  What should I do
+         * about that?  Presumably unweighted movement isn't the more
+         * important than weighted movement, but it probably best
+         * represents weighted movement.
+         */
+        if (move_joint_all_the_way(KNEEPWM_EXTEND, 50) == -1)
+            goto fail;
+        break;
+    }
+
+    /*
+     * XXX fixme: I might need to move the joint into position, if
+     * it's all the way to the wrong end.
+     */
+
+    /* XXX Maybe I should pass speed in? */
+    Serial.print("\n# Finding joint limits for IN.\n");
+    if (find_joint_limits(joint, IN) == -1)
+        ;
+/*        goto fail;*/
+
+    Serial.print("# Done, waiting...\n");
+    delay(1000);
+
+    /* And the same thing for the other directoon. */
+
+    Serial.print("\n# Finding joint limits for OUT.\n");
+    if (find_joint_limits(joint, OUT) == -1)
+        goto fail;
+
+    UNITS_PER_DEG(joint) = (SENSOR_HIGH(joint) - SENSOR_LOW(joint)) / (ANGLE_HIGH(joint) - ANGLE_LOW(joint));
+
+    rc = 0; /* Success! */
+
+    Serial.print("# Done, waiting...\n");
+    delay(1000);
+
+    Serial.print('\n');
+    Serial.print("# Done with calibration.\n");
+    Serial.print('\n');
+
+    Serial.print("# Low sensor readings:  \t");
+    Serial.print(joint_names[joint]);
+    Serial.print("\t");
+    Serial.print(SENSOR_LOW(joint));
+
+    Serial.print('\n');
+    Serial.print("# High sensor readings: \t");
+    Serial.print(joint_names[joint]);
+    Serial.print("\t");
+    Serial.print(SENSOR_HIGH(joint));
+
+    Serial.print('\n');
+    Serial.print('\n');
+
+    Serial.print("# ");
+    Serial.print(joint_names[joint]);
+    Serial.print(" first moved in at ");
+    Serial.print(LOW_PWM_MOVEMENT(joint + IN));
+    Serial.print(" percent\n");
+
+    Serial.print("# ");
+    Serial.print(joint_names[joint]);
+    Serial.print(" first moved out at ");
+    Serial.print(LOW_PWM_MOVEMENT(joint + OUT));
+    Serial.print(" percent\n");
+
+    Serial.print("\n");
+
+fail:
+    pwms_off();
+    func_park();
+
+    return rc;
 }
 
 /*
@@ -1575,6 +1703,7 @@ int calibrate_joint(int joint, int rep_count)
      * it's all the way to the wrong end.
      */
 
+#if 0 /* This is now done elsewhere. */
     /* XXX Maybe I should pass speed in? */
     Serial.print("\n# Finding joint limits for IN.\n");
     if (find_joint_limits(joint, IN) == -1)
@@ -1590,14 +1719,21 @@ int calibrate_joint(int joint, int rep_count)
     if (find_joint_limits(joint, OUT) == -1)
         goto fail;
 
+    UNITS_PER_DEG(joint) = (SENSOR_HIGH(joint) - SENSOR_LOW(joint)) / (ANGLE_HIGH(joint) - ANGLE_LOW(joint));
+
+    Serial.print("# Done, waiting...\n");
+    delay(1000);
+#endif
+
+    pwms_off();
+
     /* Discover PWM -> speed mapppings for both directions. */
     if (find_joint_pwm_speeds(joint, rep_count) == -1)
         goto fail;
 
+    pwms_off();
     Serial.print("# Done, waiting...\n");
     delay(1000);
-
-    UNITS_PER_DEG(joint) = (SENSOR_HIGH(joint) - SENSOR_LOW(joint)) / (ANGLE_HIGH(joint) - ANGLE_LOW(joint));
 
     if (joint == THIGH) {
         /* Now move the knee back in. */
@@ -1605,9 +1741,10 @@ int calibrate_joint(int joint, int rep_count)
             goto fail;
     }
 
-    set_pwm_scale(60);	/* XXX fixme: This should be some default value - midpoint betwen first movement and 100%? */
-
     pwms_off();
+    func_park();
+
+    set_pwm_scale(60);	/* XXX fixme: This should be some default value - midpoint betwen first movement and 100%? */
 
     Serial.print('\n');
     Serial.print("# Done with calibration.\n");

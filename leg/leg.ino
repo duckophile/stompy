@@ -98,6 +98,8 @@ uint32_t isr_count = 0;
 /* XXX fixme:  Knee extend and retract appear to be reversed ? */
 #define KNEEPWM_EXTEND		5
 
+/* KNEEPWM_RETRACT should be > 2, but the pin number is correct? */
+
 const int up_pwms[3]   = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN};
 const int down_pwms[3] = {HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
 const int pwm_pins[6]  = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN,
@@ -884,6 +886,25 @@ int func_stop(void)
     return 0;
 }
 
+int func_findlimits(void)
+{
+    int joint = -1;
+
+    if (!strcmp(cmd_ptr, "hip"))
+        joint = HIP;
+    if (!strcmp(cmd_ptr, "thigh"))
+        joint = THIGH;
+    if (!strcmp(cmd_ptr, "knee"))
+        joint = KNEE;
+
+    if (joint == -1) {
+        Serial.print("ERROR - Please specify hip, thigh, or knee.\n");
+        return -1;
+    }
+
+    return set_joint_limits(joint);
+}
+
 int func_hipcal(void)
 {
     int count;
@@ -938,40 +959,39 @@ int func_timing(void)
     return do_timing(direction, pwm);
 }
 
+/* XXX fixme:  This should move the hip to the center of travel. */
 int func_park(void)
 {
     Serial.print("\nParking leg.\n");
 
+    pwms_off();
     disable_interrupts();
-
     set_pwm_scale(100);
-
     enable_leg();
 
     /* Get thigh and knee into place. */
 
     /* I should use a low speed PWM value if I have one. */
     Serial.println("# Retracting thigh.");
-    if (move_joint_all_the_way(THIGHPWM_UP, 45) == -1)
-        return -1;
+    if (move_joint_all_the_way(THIGHPWM_UP, 50) == -1)
+        Serial.print("ERROR - couldn't retract thigh!\n");
+    pwms_off();
 
     Serial.println("# Done, waiting...");
     delay(1000);
 
     Serial.println("# Retracting knee.");
     /* Move knee up. */
-    if (move_joint_all_the_way(KNEEPWM_EXTEND, 45) == -1)
-        return -1;
+    if (move_joint_all_the_way(KNEEPWM_RETRACT, 50) == -1)
+        Serial.print("ERROR - couldn't retract knee!\n");
 
-    Serial.println("# Done, waiting...");
-    delay(1000);
-
-    /* Center hip? */
+    pwms_off();
+    disable_leg();
 
     /* Set the goal to wherever we are now. */
     reset_current_location();
 
-    enable_interrupts();
+    /* Center hip? */
 
     Serial.print("Done.\n\n");
 
@@ -1034,6 +1054,7 @@ struct {
     { "dither",     func_none      }, /* Set the dither amount. */
     { "enable",     func_enable    }, /* Enable the leg, allowing it to move. */
     { "eraseflash", func_eraseflash}, /* Erase the parameters saved in flash. */
+    { "findlimits", func_findlimits}, /* Find the sensor limits for a joint. */
     { "flashinfo",  func_flashinfo }, /* Print leg parameters stored in flash. */
     { "freq",       func_none      }, /* Set PWM frequency. */
     { "go",         func_go        }, /* goto given x, y, z. */
@@ -1049,7 +1070,7 @@ struct {
     { "leginfo",    func_leginfo   }, /* Print leg paramters stored in memory. */
     { "legnum",     func_legnum    }, /* Set the leg number. */
     { "name",       func_name      }, /* Nmme the leg. */
-    { "park",       func_none      }, /* Move leg to parked position. */
+    { "park",       func_park      }, /* Move leg to parked position. */
     { "pwm",        func_pwm       }, /* Set a PWM. */
     { "reset",      func_reset     }, /* Reset and reboot the teensy. */
     { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */
