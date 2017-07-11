@@ -912,12 +912,16 @@ int func_enable(void)
 {
     enable_leg();
 
+    Serial.println("OK - Leg enabled.");
+
     return 0;
 }
 
 int func_intoff(void)
 {
     disable_interrupts();
+
+    Serial.print("OK - Interrupts disabled.\n");
 
     return 0;
 }
@@ -1139,6 +1143,9 @@ void read_cmd(void)
 
         if ((ch == '\r') || (ch == '\n'))
             break;
+
+        if (ch < 0x20) /* Ignore other control characters. */
+            continue;
 
         cmd_buf[cmd_len++] = ch;
         cmd_buf[cmd_len] = 0;
@@ -1454,10 +1461,10 @@ int check_deadman(void)
              * driver boards and write zero to PWM lines
              */
             disable_leg();
-            Serial.println("OK - Deadman off - leg disabled.");
+            Serial.println("OK - Deadman on - leg disabled.");
         } else {
             enable_leg();
-            Serial.println("OK - Deadman on - leg enabled.");
+            Serial.println("OK - Deadman disabled - leg enabled.");
         }
         deadMan = i;
     }
@@ -1722,8 +1729,6 @@ void enable_leg(void)
     digitalWrite(ENABLE_PIN_HIP, HIGH);
 
     pwms_off();
-
-    Serial.println("OK - Leg enabled.");
 
     leg_enabled = 1;
 
