@@ -30,13 +30,12 @@
 #define HIP_SENSOR_PIN		20
 #define COMPLIANT_SENSOR_PIN	XX
 
-//These are mapped to the right front leg
-#define THIGHPWM_DOWN_PIN	3
-#define THIGHPWM_UP_PIN		4
-#define KNEEPWM_RETRACT_PIN	5
-#define KNEEPWM_EXTEND_PIN	6
-#define HIPPWM_FORWARD_PIN	9
-#define HIPPWM_REVERSE_PIN	10
+#define THIGHPWM_OUT_PIN	3
+#define THIGHPWM_IN_PIN		4
+#define KNEEPWM_OUT_PIN		5
+#define KNEEPWM_IN_PIN		6
+#define HIPPWM_IN_PIN		9
+#define HIPPWM_OUT_PIN		10
 
 #define M1FB_PIN		21
 #define M2FB_PIN		22

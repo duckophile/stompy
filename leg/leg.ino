@@ -80,30 +80,22 @@ uint32_t isr_max = 0;
 uint32_t isr_min = 1 << 31;
 uint32_t isr_count = 0;
 
-#define HIP		0
-#define THIGH		1
-#define KNEE		2
-#define COMPLIANT	3
+/* Joint/sensor numbers. */
+#define HIP			0
+#define THIGH			1
+#define KNEE			2
+#define COMPLIANT		3
 
-/*
- * XXX fixme: This should be ordered such that the first three have
- * the sensor reading going down and the last three have it going up,
- * but I'm not sure if that's true or if that can be made to work.
- */
-#define HIPPWM_FORWARD		0
-#define THIGHPWM_UP		1
-#define KNEEPWM_RETRACT		2
-#define HIPPWM_REVERSE		3
-#define THIGHPWM_DOWN		4
-/* XXX fixme:  Knee extend and retract appear to be reversed ? */
-#define KNEEPWM_EXTEND		5
+/* Valve numbers. */
+#define HIPPWM_OUT		0
+#define THIGHPWM_OUT		1
+#define KNEEPWM_OUT		2
+#define HIPPWM_IN		3
+#define THIGHPWM_IN		4
+#define KNEEPWM_IN		5
 
-/* KNEEPWM_RETRACT should be > 2, but the pin number is correct? */
-
-const int up_pwms[3]   = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN};
-const int down_pwms[3] = {HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
-const int pwm_pins[6]  = {HIPPWM_REVERSE_PIN,  THIGHPWM_UP_PIN,   KNEEPWM_RETRACT_PIN,
-                          HIPPWM_FORWARD_PIN,  THIGHPWM_DOWN_PIN, KNEEPWM_EXTEND_PIN};
+const int pwm_pins[6]  = {HIPPWM_OUT_PIN,  THIGHPWM_OUT_PIN,  KNEEPWM_OUT_PIN,
+                          HIPPWM_IN_PIN,   THIGHPWM_IN_PIN,   KNEEPWM_IN_PIN};
 
 /*
   * These are used to convert an 0-2 joint number to a valve number in
@@ -126,11 +118,11 @@ const char *joint_down_actions[] = {"forward", "down",  "in"};
  * and *_goal vs. *_goals
  */
 
-int sensor_goal[3]    = {0,0,0};
+int sensor_goal[3]     = {0,0,0};
 double xyz_goal[3]     = {0,0,0};
 double angle_goals[3]  = {0,0,0};
 
-int current_sensor[3] = {0,0,0};
+int current_sensor[3]  = {0,0,0};
 
 /* The minimum PWM speed at which a valve can move a joint. */
 /* XXX fixme:  These should be stored in flash. */
@@ -959,6 +951,20 @@ int func_timing(void)
     return do_timing(direction, pwm);
 }
 
+int func_foo(void)
+{
+    Serial.print("Extending knee (IN).\n");
+    if (move_joint_all_the_way(KNEEPWM_IN, 50) == -1)
+        Serial.print("ERROR - couldn't extend knee!\n");
+    Serial.print("\n\n");
+    Serial.print("Retracting knee (OUT).\n");
+    if (move_joint_all_the_way(KNEEPWM_OUT, 50) == -1)
+        Serial.print("ERROR - couldn't retract knee!\n");
+
+    return 0;
+}
+
+
 /* XXX fixme:  This should move the hip to the center of travel. */
 int func_park(void)
 {
@@ -973,7 +979,7 @@ int func_park(void)
 
     /* I should use a low speed PWM value if I have one. */
     Serial.println("# Retracting thigh.");
-    if (move_joint_all_the_way(THIGHPWM_UP, 50) == -1)
+    if (move_joint_all_the_way(THIGHPWM_IN, 50) == -1)
         Serial.print("ERROR - couldn't retract thigh!\n");
     pwms_off();
 
@@ -982,7 +988,7 @@ int func_park(void)
 
     Serial.println("# Retracting knee.");
     /* Move knee up. */
-    if (move_joint_all_the_way(KNEEPWM_RETRACT, 50) == -1)
+    if (move_joint_all_the_way(KNEEPWM_OUT, 50) == -1)
         Serial.print("ERROR - couldn't retract knee!\n");
 
     pwms_off();
@@ -1056,6 +1062,7 @@ struct {
     { "eraseflash", func_eraseflash}, /* Erase the parameters saved in flash. */
     { "findlimits", func_findlimits}, /* Find the sensor limits for a joint. */
     { "flashinfo",  func_flashinfo }, /* Print leg parameters stored in flash. */
+    { "foo",        func_foo       }, /* Whatever I want it to do. */
     { "freq",       func_none      }, /* Set PWM frequency. */
     { "go",         func_go        }, /* goto given x, y, z. */
     { "help",       func_help      },

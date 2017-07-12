@@ -83,11 +83,11 @@ int move_joint_all_the_way(int valve, int pwm_percent)
     /* Sensor number is 0-2. */
     if (sensor_num > 2) {
         sensor_num = sensor_num - 3;
-        out = 1;	/* Sensor reading should be going up?  Hopefully? */
-        Serial.print("Sensor value should be increasing.\n");
-    } else {
         out = 0;
-        Serial.print("Sensor value should be decreasing.\n");
+        Serial.print("IN - Sensor value should be decreasing.\n");
+    } else {
+        out = 1;	/* Sensor reading should be going up?  Hopefully? */
+        Serial.print("OUT - Sensor value should be increasing.\n");
     }
 
     Serial.print("Setting valve ");
@@ -1512,7 +1512,7 @@ int set_joint_limits(int joint)
 
     /* I should use a low speed PWM value if I have one. */
     Serial.print("# Retracting thigh.\n");
-    if (move_joint_all_the_way(THIGHPWM_UP, 50) == -1)
+    if (move_joint_all_the_way(THIGHPWM_IN, 50) == -1)
         goto fail;
 
     Serial.print("# Done, waiting...\n");
@@ -1520,12 +1520,12 @@ int set_joint_limits(int joint)
 
     Serial.print("# Retracting knee.\n");
     /* Move knee up. */
-    if (move_joint_all_the_way(KNEEPWM_RETRACT, 50) == -1)
+    if (move_joint_all_the_way(KNEEPWM_OUT, 50) == -1)
         goto fail;
 
     delay(1000);
     Serial.print("# Bleeding knee.\n");
-    if (move_joint_all_the_way(KNEEPWM_RETRACT, 100) == -1)
+    if (move_joint_all_the_way(KNEEPWM_OUT, 100) == -1)
         goto fail;
 
     Serial.print("# Done, waiting...\n");
@@ -1534,7 +1534,7 @@ int set_joint_limits(int joint)
     switch(joint) {
     case HIP:
         /* This does IN first, so move the joint OUT. */
-        if (move_joint_all_the_way(HIPPWM_REVERSE, 50) == -1)
+        if (move_joint_all_the_way(HIPPWM_OUT, 50) == -1)
             goto fail;
         break;
 
@@ -1551,7 +1551,7 @@ int set_joint_limits(int joint)
          * important than weighted movement, but it probably best
          * represents weighted movement.
          */
-        if (move_joint_all_the_way(KNEEPWM_EXTEND, 50) == -1)
+        if (move_joint_all_the_way(KNEEPWM_IN, 50) == -1)
             goto fail;
         break;
     }
@@ -1615,9 +1615,10 @@ int set_joint_limits(int joint)
 
     Serial.print("\n");
 
+    func_park();
+
 fail:
     pwms_off();
-    func_park();
 
     return rc;
 }
@@ -1654,7 +1655,7 @@ int calibrate_joint(int joint, int rep_count)
 
     /* I should use a low speed PWM value if I have one. */
     Serial.print("# Retracting thigh.\n");
-    if (move_joint_all_the_way(THIGHPWM_UP, 50) == -1)
+    if (move_joint_all_the_way(THIGHPWM_IN, 50) == -1)
         goto fail;
 
     Serial.print("# Done, waiting...\n");
@@ -1662,12 +1663,12 @@ int calibrate_joint(int joint, int rep_count)
 
     Serial.print("# Retracting knee.\n");
     /* Move knee up. */
-    if (move_joint_all_the_way(KNEEPWM_RETRACT, 50) == -1)
+    if (move_joint_all_the_way(KNEEPWM_OUT, 50) == -1)
         goto fail;
 
     delay(1000);
     Serial.print("# Bleeding knee.\n");
-    if (move_joint_all_the_way(KNEEPWM_RETRACT, 100) == -1)
+    if (move_joint_all_the_way(KNEEPWM_OUT, 100) == -1)
         goto fail;
 
     Serial.print("# Done, waiting...\n");
@@ -1676,7 +1677,7 @@ int calibrate_joint(int joint, int rep_count)
     switch(joint) {
     case HIP:
         /* This does IN first, so move the joint OUT. */
-        if (move_joint_all_the_way(HIPPWM_REVERSE, 50) == -1)
+        if (move_joint_all_the_way(HIPPWM_OUT, 50) == -1)
             goto fail;
         break;
 
@@ -1693,7 +1694,7 @@ int calibrate_joint(int joint, int rep_count)
          * important than weighted movement, but it probably best
          * represents weighted movement.
          */
-        if (move_joint_all_the_way(KNEEPWM_EXTEND, 50) == -1)
+        if (move_joint_all_the_way(KNEEPWM_IN, 50) == -1)
             goto fail;
         break;
     }
@@ -1737,7 +1738,7 @@ int calibrate_joint(int joint, int rep_count)
 
     if (joint == THIGH) {
         /* Now move the knee back in. */
-        if (move_joint_all_the_way(KNEEPWM_RETRACT, 45) == -1)
+        if (move_joint_all_the_way(KNEEPWM_OUT, 45) == -1)
             goto fail;
     }
 
