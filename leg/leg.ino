@@ -951,6 +951,7 @@ int func_timing(void)
     return do_timing(direction, pwm);
 }
 
+/* Put random test stuff here. */
 int func_foo(void)
 {
     Serial.print("Extending knee (IN).\n");
@@ -965,8 +966,7 @@ int func_foo(void)
 }
 
 
-/* XXX fixme:  This should move the hip to the center of travel. */
-int func_park(void)
+int park_leg(void)
 {
     Serial.print("\nParking leg.\n");
 
@@ -983,8 +983,7 @@ int func_park(void)
         Serial.print("ERROR - couldn't retract thigh!\n");
     pwms_off();
 
-    Serial.println("# Done, waiting...");
-    delay(1000);
+    delay(100);
 
     Serial.println("# Retracting knee.");
     /* Move knee up. */
@@ -992,16 +991,18 @@ int func_park(void)
         Serial.print("ERROR - couldn't retract knee!\n");
 
     pwms_off();
-    disable_leg();
 
     /* Set the goal to wherever we are now. */
     reset_current_location();
 
-    /* Center hip? */
-
-    Serial.print("Done.\n\n");
+    /* XXX fixme: Center hip. */
 
     return 0;
+}
+
+int func_park(void)
+{
+    return park_leg();
 }
 
 int measure_speed(int joint, int direction, int pwm_goal, int verbose);
