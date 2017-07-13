@@ -108,9 +108,9 @@ void set_joint_speed(uint32_t joint_num, uint32_t joint_speed)
     pwm_percent = ((double)joint_speed + 328.0) / 8.3;
 
     if (velocity_debug) {
-        Serial.print(" input speed: ");
+        Serial.print(" input speed (sensor/sec): ");
         Serial.print(joint_speed);
-        Serial.print(", pwm_percent");
+        Serial.print(", pwm_percent: ");
         Serial.print(pwm_percent);
         Serial.print('\n');
     }
@@ -231,9 +231,13 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
         /* joint_speed is a percentage, 0-100. */
         sensor_speed = (JOINT_MAX_SPEED(valve) * joint_speed) / 100;
 
-        Serial.print("Sensor units/sec = ");
-        Serial.print(sensor_speed);
-        Serial.print("\n");
+        if (velocity_debug) {
+            Serial.print("# Joint ");
+            Serial.print(i);
+            Serial.print(" sensor units/sec = ");
+            Serial.print(sensor_speed);
+            Serial.print("\n");
+        }
 
         /* Select PWM based on joint number and direction. */
         set_joint_speed(valve, sensor_speed);

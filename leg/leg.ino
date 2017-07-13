@@ -122,7 +122,7 @@ int sensor_goal[3]     = {0,0,0};
 double xyz_goal[3]     = {0,0,0};
 double angle_goals[3]  = {0,0,0};
 
-int current_sensor[3]  = {0,0,0};
+int current_sensor[NR_SENSORS];
 
 /* The minimum PWM speed at which a valve can move a joint. */
 /* XXX fixme:  These should be stored in flash. */
@@ -137,7 +137,7 @@ int valve_min_pwm_speed[6] = {-1, -1, -1, -1, -1, -1};
 double current_deg[3];
 double current_rad[3];
 
-int sensorPin[3] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN};
+int sensorPin[] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN, COMPLIANT_SENSOR_PIN};
 // this is the distance in sensor reading that is close enough for directed movement
 // I am putting this here so we can avoid chasing our tails early in positional control
 int closeEnough = 2;
@@ -166,9 +166,9 @@ int deadman_forced = 0; /* Ignore the deadman if this is set. */
 #define L2		54
 #define L3		72
 
-#define HIP_LEN		11	/* Hip pivot to thigh pivot. */
-#define THIGH_LEN	54	/* Thigh pivot to knee pivot. */
-#define KNEE_LEN	72	/* Knee pivot to ankle pivot. */
+#define HIP_LEN		11	/* Hip pivot to thigh pivot, in inches. */
+#define THIGH_LEN	54	/* Thigh pivot to knee pivot, in inches. */
+#define KNEE_LEN	72	/* Knee pivot to ankle pivot, in inches. */
 
 #define X		0
 #define Y		1
@@ -180,6 +180,10 @@ leg_info_t leg_info;
 char cmd_buf[128];
 int cmd_len = 0;
 char *cmd_ptr;
+
+/* Track the highest and lowest sensor values seen. */
+int max_sensor_seen[NR_SENSORS];
+int min_sensor_seen[NR_SENSORS] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
 
 /*
  * Take three threadings and return the middle one.  This should
@@ -193,7 +197,7 @@ int read_sensor(int joint)
     int pin;
     int tmp;
 
-    if ((joint > NR_JOINTS) || (joint < 0)) {
+    if ((joint > NR_SENSORS) || (joint < 0)) {
         Serial.println("**************** JOINT OUT OF RANGE!");
         return -1;
     }
@@ -212,6 +216,11 @@ int read_sensor(int joint)
         SWAP(r1, r2);
     if (r3 < r2)
         SWAP(r2, r3);
+
+    if (r2 < min_sensor_seen[joint])
+        min_sensor_seen[joint] = r2;
+    if (r2 > max_sensor_seen[joint])
+        max_sensor_seen[joint] = r2;
 
     return r2;
 }
@@ -316,7 +325,7 @@ void print_current(void)
         Serial.print("\t");
         Serial.print(current_pwms[i]);
     }
-    Serial.println("");
+    Serial.println('\n');
     Serial.print("Current PWMs:    ");
     for (i = 3;i < 6;i++) {
         Serial.print("\t");
@@ -324,7 +333,7 @@ void print_current(void)
         Serial.print("\t");
         Serial.print(current_pwms[i]);
     }
-    Serial.println("");
+    Serial.println('\n');
 
     Serial.print("Current angles:  ");
     for (i = 0; i < 3; i++) {
@@ -333,7 +342,7 @@ void print_current(void)
         Serial.print("\t");
         Serial.print(current_deg[i]);
     }
-    Serial.println("");
+    Serial.println('\n');
 
     Serial.print("Current sensors: ");
     for (i = 0; i < 3; i++) {
@@ -342,14 +351,14 @@ void print_current(void)
         Serial.print("\t");
         Serial.print(current_sensor[i]);
     }
-    Serial.println("");
+    Serial.print('\n');
 
     Serial.print("Current XYZ:    \t");
     for (i = 0; i < 3; i++) {
         Serial.print("\t");
         Serial.print(current_xyz[i]);
     }
-    Serial.println("");
+    Serial.print('\n');
 
     return;
 }
@@ -366,14 +375,14 @@ void print_goals(void)
         Serial.print("\t");
         Serial.print(sensor_goal[i]);
     }
-    Serial.println("");
+    Serial.print('\n');
 
     Serial.print("XYZ goal:        ");
     for (i = 0;i < 3;i++) {
         Serial.print("\t");
         Serial.print(xyz_goal[i]);
     }
-    Serial.println("");
+    Serial.print('\n');
 
     Serial.print("Angle goals:     ");
     for (i = 0;i < 3;i++) {
@@ -527,26 +536,27 @@ void print_leg_info(leg_info_t *li)
     int i;
     int n;
 
-    Serial.print("#\n# Sensor highs\n");
-    for (i = 0;i < NR_JOINTS;i++) {
-        Serial.print("#\t");
-        Serial.print(joint_names[i]);
-        Serial.print("     \t");
-        if (li->sensor_limits[i].sensor_high == 0xFFFF)
-            Serial.println("N/A");
-        else
-            Serial.println(li->sensor_limits[i].sensor_high);
-    }
-
-    Serial.print("#\n# Sensor lows\n");
+    Serial.print("#\n# Sensor\tLow\tHigh\tTravel\n");
     for (i = 0;i < NR_JOINTS;i++) {
         Serial.print("#\t");
         Serial.print(joint_names[i]);
         Serial.print("     \t");
         if (li->sensor_limits[i].sensor_low == 0xFFFF)
-            Serial.println("N/A");
+            Serial.print("N/A");
         else
-            Serial.println(li->sensor_limits[i].sensor_low);
+            Serial.print(li->sensor_limits[i].sensor_low);
+        Serial.print('\t');
+        if (li->sensor_limits[i].sensor_high == 0xFFFF)
+            Serial.print("N/A");
+        else
+            Serial.print(li->sensor_limits[i].sensor_high);
+        Serial.print('\t');
+        if ((li->sensor_limits[i].sensor_low == 0xFFFF) || (li->sensor_limits[i].sensor_high == 0xFFFF))
+            Serial.print("N/A");
+        else
+            Serial.print(li->sensor_limits[i].sensor_high - li->sensor_limits[i].sensor_low);
+
+        Serial.print('\n');
     }
 
     Serial.print("#\n# PWM to speed mappings:\n#\n");
@@ -586,7 +596,7 @@ void print_leg_info(leg_info_t *li)
         Serial.print("\n");
     }
 
-    Serial.println("\n");
+    Serial.print("\n");
 
     return;
 }
@@ -782,7 +792,7 @@ int func_sensors(void)
 
     memset(readings, 0, sizeof(readings));
 
-    Serial.println("");
+    Serial.println('\n');
     Serial.print("Sensors: ");
     while (1) {
         sample_count++;
@@ -847,7 +857,7 @@ int func_sensors(void)
 /*        Serial.print(leg_info.sensor_limits[i].sensor_low);*/
         Serial.print(sense_lows[i]);
     }
-    Serial.println("");
+    Serial.println('\n');
     Serial.print("High sensor readings: ");
     for (i = 0;i < 3;i++) {
         Serial.print("\t");
@@ -856,8 +866,8 @@ int func_sensors(void)
 /*        Serial.print(leg_info.sensor_limits[i].sensor_high);*/
         Serial.print(sense_highs[i]);
     }
-    Serial.println("");
-    Serial.println("");
+    Serial.println('\n');
+    Serial.println('\n');
 
     return 0;
 }
@@ -1372,7 +1382,7 @@ void read_sensors(int *sensors)
     int n;
 
     DEBUG("Sensors:");
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < NR_SENSORS; i++) {
         /* Read sensors even if we're not moving. */
         n = read_sensor(i);
         sensors[i] = n;
@@ -1462,10 +1472,10 @@ int read_xyz(double *xyz)
         xyz[X] = 0.0001;
 
 #if 0
-    Serial.println("");
+    Serial.println('\n');
     Serial.print("I was given a goal of (x,y,z): ");
     print_xyz(xyz);
-    Serial.println("");
+    Serial.println('\n');
 #endif
 
     return 0;
@@ -1513,7 +1523,7 @@ void thing(int n)
     Serial.print(n);
     Serial.print(" ");
     Serial.print(joystick_mode);
-    Serial.println("");
+    Serial.println('\n');
     if (joystick_mode == 0)
         done = 1;
 
@@ -1571,12 +1581,12 @@ void loop(void)
         print_xyz(current_xyz);
         Serial.print(" Goal: ");
         print_xyz(xyz_goal);
-        Serial.println("");
+        Serial.println('\n');
 #endif
 /*
         Serial.print(" current angles (hip, thigh, knee): ");
         print_xyz(current_deg);
-        Serial.println("");
+        Serial.println('\n');
 */
 
         last_x_inches = current_xyz[X];
@@ -1650,12 +1660,12 @@ void loop(void)
         print_xyz(current_xyz);
         Serial.print(" Goal: ");
         print_xyz(xyz_goal);
-        Serial.println("");
+        Serial.println('\n');
 #endif
 /*
         Serial.print(" current angles (hip, thigh, knee): ");
         print_xyz(current_deg);
-        Serial.println("");
+        Serial.println('\n');
 */
 
         last_x_inches = current_xyz[X];
