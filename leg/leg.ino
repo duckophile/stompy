@@ -123,10 +123,7 @@ double xyz_goal[3]     = {0,0,0};
 double angle_goals[3]  = {0,0,0};
 
 int current_sensor[NR_SENSORS];
-
-/* The minimum PWM speed at which a valve can move a joint. */
-/* XXX fixme:  These should be stored in flash. */
-int valve_min_pwm_speed[6] = {-1, -1, -1, -1, -1, -1};
+int current_pwms[NR_VALVES] = { 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF};
 
 /*
  * Angles in degrees -
@@ -137,7 +134,7 @@ int valve_min_pwm_speed[6] = {-1, -1, -1, -1, -1, -1};
 double current_deg[3];
 double current_rad[3];
 
-int sensorPin[] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN, COMPLIANT_SENSOR_PIN};
+int sensorPin[NR_SENSORS] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN, COMPLIANT_SENSOR_PIN};
 // this is the distance in sensor reading that is close enough for directed movement
 // I am putting this here so we can avoid chasing our tails early in positional control
 int closeEnough = 2;
@@ -309,89 +306,6 @@ int func_dbg(void)
     periodic_debug_flag = !periodic_debug_flag;
 
     return 0;
-}
-
-extern int current_pwms[];
-
-/* XXX fixme:  Unused. */
-void print_current(void)
-{
-    int i;
-
-    Serial.print("Current PWMs:    ");
-    for (i = 0;i < 3;i++) {
-        Serial.print("\t");
-        Serial.print(joint_names[i]);
-        Serial.print("\t");
-        Serial.print(current_pwms[i]);
-    }
-    Serial.println('\n');
-    Serial.print("Current PWMs:    ");
-    for (i = 3;i < 6;i++) {
-        Serial.print("\t");
-        Serial.print(joint_names[i - 3]);
-        Serial.print("\t");
-        Serial.print(current_pwms[i]);
-    }
-    Serial.println('\n');
-
-    Serial.print("Current angles:  ");
-    for (i = 0; i < 3; i++) {
-        Serial.print("\t");
-        Serial.print(joint_names[i]);
-        Serial.print("\t");
-        Serial.print(current_deg[i]);
-    }
-    Serial.println('\n');
-
-    Serial.print("Current sensors: ");
-    for (i = 0; i < 3; i++) {
-        Serial.print("\t");
-        Serial.print(joint_names[i]);
-        Serial.print("\t");
-        Serial.print(current_sensor[i]);
-    }
-    Serial.print('\n');
-
-    Serial.print("Current XYZ:    \t");
-    for (i = 0; i < 3; i++) {
-        Serial.print("\t");
-        Serial.print(current_xyz[i]);
-    }
-    Serial.print('\n');
-
-    return;
-}
-
-/* XXX fixme:  Unused. */
-void print_goals(void)
-{
-    int i;
-
-    Serial.print("Sensor Goals:    ");
-    for (i = 0;i < 3;i++) {
-        Serial.print("\t");
-        Serial.print(joint_names[i]);
-        Serial.print("\t");
-        Serial.print(sensor_goal[i]);
-    }
-    Serial.print('\n');
-
-    Serial.print("XYZ goal:        ");
-    for (i = 0;i < 3;i++) {
-        Serial.print("\t");
-        Serial.print(xyz_goal[i]);
-    }
-    Serial.print('\n');
-
-    Serial.print("Angle goals:     ");
-    for (i = 0;i < 3;i++) {
-        Serial.print("\t");
-        Serial.print(angle_goals[i]);
-    }
-    Serial.print("\n");
-
-    return;
 }
 
 int func_info(void)

@@ -5,7 +5,6 @@
  * into this module while the interrupt-driven routine is running.
  */
 static int pwm_goals[6] = {0};
-int current_pwms[6] = { 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF};
 static int pwm_scale = 60;
 
 void set_pwm_freq(int freq)
