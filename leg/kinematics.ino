@@ -14,13 +14,14 @@
  * XXX fixme: This should be two functions, one to convert (x,y,z) to
  * three angles, and another to convert that to sensor values.
  */
-void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
+int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
 {
+    int rc = 0;
     double theta1R, theta2R, theta3R; /* Goal angles in degrees. */
     double theta1, theta2, theta3; /* Goal angles in radians. */
     double hipGoal, thighGoal, kneeGoal; /* Goal sensor values. */
 
-#if 0
+#if 1
     Serial.print("New goal (x,y,z): ");
     Serial.print("(");
     Serial.print(xyz[X]);
@@ -28,7 +29,7 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
     Serial.print(xyz[Y]);
     Serial.print(", ");
     Serial.print(xyz[Z]);
-    Serial.println(")");
+    Serial.print(")\n");
 #endif
 
     /* HIP - theta1 */
@@ -48,7 +49,9 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print(")\n");
         hipGoal = constrain(hipGoal, SENSOR_LOW(HIP), SENSOR_HIGH(HIP));
         Serial.print("constrained goal: ");
-        Serial.println(hipGoal);
+        Serial.print(hipGoal);
+        Serial.print('\n');
+        rc = -1;
     }
 
     /* Thigh - theta2 */
@@ -96,13 +99,15 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print(" OUT OF RANGE!!\n");
         thighGoal = constrain(thighGoal, SENSOR_LOW(THIGH), SENSOR_HIGH(THIGH));
         Serial.print("constrained goal: ");
-        Serial.println(thighGoal);
+        Serial.print(thighGoal);
+        Serial.print('\n');
+        rc = -1;
     }
 
     /* Knee - theta3 */
     theta3R = acos( (sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2));
     theta3 = (theta3R * 4068) / 71;
-#if 0
+#if 1
     Serial.print("knee rad = ");
     Serial.print(theta3R);
     Serial.print(" which is from acos( ");
@@ -124,22 +129,37 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print("KNEE GOAL ");
         Serial.print(kneeGoal);
         Serial.print(" OUT OF RANGE!!\n");
+        rc = -1;
         // kneeGoal = constrain(kneeGoal, SENSOR_LOW(KNEE), SENSOR_HIGH(KNEE));
         // Serial.print("constrained goal: ");
     }
 
-    sense_goals[HIP]   = hipGoal;
-    sense_goals[THIGH] = thighGoal;
-    sense_goals[KNEE]  = kneeGoal;
+    if (isnan(theta1) || isnan(theta2) || isnan(theta3)) {
+        Serial.print("**** Got NaN for angles!\n");
+        Serial.print(theta1);
+        Serial.print('\n');
+        Serial.print(theta2);
+        Serial.print('\n');
+        Serial.print(theta3);
+        Serial.print('\n');
 
-    deg_goals[HIP]   = theta1;
-    deg_goals[THIGH] = theta2;
-    deg_goals[KNEE]  = theta3;
+        rc = -1;
+    }
 
-#if 0
+    if (rc == 0) {
+        sense_goals[HIP]   = hipGoal;
+        sense_goals[THIGH] = thighGoal;
+        sense_goals[KNEE]  = kneeGoal;
+
+        deg_goals[HIP]   = theta1;
+        deg_goals[THIGH] = theta2;
+        deg_goals[KNEE]  = theta3;
+    }
+
+#if 1
     Serial.print("\nNew Goals: (x,y,z):\t");
-    print_xyz(xyz);
-    Serial.println("");
+    print_ftuple(xyz);
+    Serial.print('\n');
     Serial.print("Goal angles (deg):\t");
     Serial.print(theta1);
     Serial.print(" ");
@@ -147,17 +167,17 @@ void inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
     Serial.print(" ");
     Serial.print(theta3);
 
-    Serial.println("");
+    Serial.print('\t');
     Serial.print("Sensor goals:\thip\t");
     Serial.print(sense_goals[HIP]);
     Serial.print("\tthigh\t");
     Serial.print(sense_goals[THIGH]);
     Serial.print("\tknee\t");
     Serial.print(sense_goals[KNEE]);
-    Serial.println("");
+    Serial.print('\t');
 #endif
 
-    return;
+    return rc;
 }
 
 /*

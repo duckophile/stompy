@@ -25,7 +25,8 @@ void set_pwm_scale(int scale)
     pwm_scale = scale;
 
     Serial.print("PWM scaling factor set to ");
-    Serial.println(pwm_scale);
+    Serial.print(pwm_scale);
+    Serial.print('\n');
 
     return;
 }
@@ -86,7 +87,8 @@ void set_pwm(int valve, int percent)
         Serial.print(" pin ");
         Serial.print(pwm_pins[valve]);
         Serial.print(" set to ");
-        Serial.println(normalized);
+        Serial.print(normalized);
+        Serial.print('\n');
 #endif
         if (normalized != 0) {
 #if 0

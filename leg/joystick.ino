@@ -28,7 +28,7 @@ int toggle_joystick_mode(void)
     reset_current_location(); /* Current XYZ is new goal. */
 
     Serial.print("Joystick ");
-    Serial.println(joystick_mode ? "enabled" : "disabled");
+    Serial.print(joystick_mode ? "enabled\n" : "disabled\n");
 
     return 0;
 }
@@ -45,7 +45,7 @@ int func_jtest(void)
             Serial.print(val);
             Serial.print('\t');
         }
-        Serial.println("");
+        Serial.print('\n');
         delay(100);
         if (Serial.available() > 0) {
             Serial.read();

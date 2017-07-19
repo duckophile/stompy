@@ -115,6 +115,9 @@ void set_joint_speed(uint32_t joint_num, uint32_t joint_speed)
         Serial.print('\n');
     }
 
+#warning Hardwired 50% PWM!
+    pwm_percent = 50;
+
     set_pwm_goal(joint_num, pwm_percent);
 
     return;
@@ -204,7 +207,7 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
             Serial.print(" joint speed ");
             Serial.print(joint_speed);
 
-/*            printf("set_pwm(): Joint %d, xyz_scale %d, direction %d, joint_speed %d\n",
+/*            Serial.print("set_pwm(): Joint %d, xyz_scale %d, direction %d, joint_speed %d\n",
                    i, xyz_scale[i], directions[i], joint_speed); */
             Serial.print('\n');
         }
@@ -304,7 +307,7 @@ void XXX_set_pwms(int foot_speed, double xyz_scale[], int directions[])
             Serial.print(" joint speed ");
             Serial.print(joint_speed);
 
-/*            printf("set_pwm(): Joint %d, xyz_scale %d, direction %d, joint_speed %d\n",
+/*            Serial.print("set_pwm(): Joint %d, xyz_scale %d, direction %d, joint_speed %d\n",
                    i, xyz_scale[i], directions[i], joint_speed); */
         }
 
@@ -407,11 +410,11 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
         if (velocity_debug) {
             Serial.print("Sensor goal ");
             Serial.print(sensor_goal[i]);
-            Serial.print(" compared to current ");
+            Serial.print("\tcompared to current\t");
             Serial.print(current_sensor[i]);
-            Serial.print(" so joint ");
+            Serial.print("\tso joint\t");
             Serial.print(i);
-            Serial.print(" goes ");
+            Serial.print("\tgoes\t");
             Serial.print(joint_direction[i] == IN ? "IN" : "OUT");
             Serial.print('\n');
         }
@@ -445,18 +448,18 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
         speed_scale[i] = movement_inches[i] / largest_delta;
 
     if (velocity_debug) {
-        Serial.print("Sensor deltas from current to goal: ");
+        Serial.print("Sensor deltas from current to goal:\t");
         for (i = 0;i < 3; i++) {
             Serial.print(sensor_delta[i]);
             Serial.print("\t");
         }
         Serial.print("\n");
-        Serial.print("Scaling factor for each joint:      ");
+        Serial.print("Scaling factor for each joint:      \t");
         for (i = 0;i < 3; i++) {
             Serial.print(speed_scale[i]);
-            Serial.print("\t");
+            Serial.print('\t');
         }
-        Serial.print("\n");
+        Serial.print('\n');
     }
 
     return;
@@ -516,16 +519,16 @@ void XXX_calculate_deltas(double xyz_delta[], double xyz_scale[], int xyz_direct
         Serial.print("XYZ deltas from current to goal: ");
         for (i = 0;i < 3; i++) {
             Serial.print(xyz_delta[i]);
-            Serial.print("\t");
+            Serial.print('\t');
         }
-        Serial.print("\n");
+        Serial.print('\n');
 
         Serial.print("XYZ scaling: ");
         for (i = 0;i < 3;i++) {
             Serial.print(xyz_scale[i]);
-            Serial.print("\t");
+            Serial.print('\t');
         }
-        Serial.print("\n");
+        Serial.print('\n');
     }
 
     return;
@@ -553,11 +556,14 @@ void do_joystick_xyz(void)
         if (abs(joystick_values[i] - JOYSTICK_MID) < 20)
             joystick_values[i] = JOYSTICK_MID;
         if (velocity_debug) {
-            printf("Joystick %d: %d,  ", i, joystick_values[i]);
+            Serial.print("Joystick ");
+            Serial.print(i);
+            Serial.print(' ');
+            Serial.print(joystick_values[i]);
         }
     }
     if (velocity_debug)
-        printf("\n");
+        Serial.print('\n');
 
     /* Move the (X,Y,Z) goal based on the joystick position. */
     for (i = 0;i < 3;i++) {
@@ -574,27 +580,42 @@ void do_joystick_xyz(void)
         }
 
         if (velocity_debug)
-            printf("axis %d: joystick %d, ", i, joystick_values[i]);
+            Serial.print("axis ");
+        Serial.print(i);
+        Serial.print(' ');
+        Serial.print(joystick_values[i]);
 
         /* Turn joystick value into FPS. */
         movement = ((float)val * JOYSTICK_SPEED_FPS) / JOYSTICK_MID;
-        if (velocity_debug)
-            printf("FPS = %f, ", movement);
+        if (velocity_debug) {
+            Serial.print("FPS = ");
+            Serial.print( movement);
+        }
 
         /* Turns FPS into feet per HZ */
         movement /= VELOCITY_HZ;
 
-        if (velocity_debug)
-            printf("feet/hz = %f", movement);
+        if (velocity_debug) {
+            Serial.print("feet/hz = ");
+            Serial.print(movement);
+            Serial.print('\n');
+        }
 
         /* Turn speed into speed + direction. */
         movement *= direction;
 
-        if (velocity_debug)
-            printf("movement + direction = %f.  old xyz_goal = %f, ", movement, xyz_goal[i]);
+        if (velocity_debug) {
+            Serial.print("movement + direction = ");
+            Serial.print(movement);
+            Serial.print(". old xyz_goal = ");
+            Serial.print(xyz_goal[i]);
+            Serial.print('\n');
+        }
 
         xyz_goal[i] += movement;
-        printf("new xyz_goal = %f\n", xyz_goal[i]);
+        Serial.print("new xyz_goal = ");
+        Serial.print(xyz_goal[i]);
+        Serial.print('\n');
     }
 
     return;
@@ -695,8 +716,8 @@ void velocity_loop(void)
 #define DEBUG_VELOCITY	0
 
     if (velocity_debug) {
-        Serial.print("\n");
-        Serial.print("\nSensors: ");
+        Serial.print('\n');
+        Serial.print("\nSensors:\t");
         Serial.print(current_sensor[0]);
         Serial.print("\t");
         Serial.print(current_sensor[1]);
@@ -709,8 +730,8 @@ void velocity_loop(void)
     calculate_angles(current_sensor, current_deg, current_rad);
 
     if (velocity_debug) {
-        Serial.print("Degrees: ");
-        print_xyz(current_deg);
+        Serial.print("Current degrees: ");
+        print_ftuple(current_deg);
         Serial.print("\n");
     }
 
@@ -718,8 +739,8 @@ void velocity_loop(void)
     calculate_xyz(current_xyz, current_rad);
 
     if (velocity_debug) {
-        Serial.print("XYZ: ");
-        print_xyz(current_xyz);
+        Serial.print("XYZ: \t");
+        print_ftuple(current_xyz);
         Serial.print("\n");
     }
 
@@ -746,7 +767,7 @@ void velocity_loop(void)
     }
 
     if (velocity_debug) {
-        Serial.print("Distance to goal: ");
+        Serial.print("3D distance to goal: ");
         Serial.print(distance);
         Serial.print('\n');
     }

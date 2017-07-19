@@ -1039,17 +1039,20 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         Serial.print("# Done, PWM = ");
         Serial.print(pwm_goal);
         Serial.print("%, Speed = ");
-        Serial.println(speed);
+        Serial.print(speed);
+        Serial.print('\n');
 
         Serial.print("# Start sensor reading: ");
         Serial.print(start_sensor);
         Serial.print(", end sensor reading: ");
         Serial.print(stop_sensor);
         Serial.print(", total sensor movement: ");
-        Serial.println(total_sensor);
+        Serial.print(total_sensor);
+        Serial.print('\n');
 
         Serial.print("# Total milliseconds at full speed: ");
-        Serial.println(total_millis);
+        Serial.print(total_millis);
+        Serial.print('\n');
 
         Serial.print("Speed: ");
         Serial.print(speed);
@@ -1266,7 +1269,7 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
          * the low limit, I just need to find out what it is.
          */
         if (joint == THIGH) {
-            if (sensor_val > 550) {
+            if (sensor_val > 600) {
                 Serial.print("\n**** Hit artificial thigh limit!\n\n");
                 break;
             }
@@ -1356,7 +1359,8 @@ int find_joint_pwm_speeds(int joint, int count)
         Serial.print("\n# Iteration ");
         Serial.print(iternum);
         Serial.print(" of ");
-        Serial.println(count);
+        Serial.print(count);
+        Serial.print('\n');
 
         /* Start at 10% below the lowest movement point. */
         pwm_start = LOW_PWM_MOVEMENT(joint + direction);
@@ -1389,7 +1393,8 @@ int find_joint_pwm_speeds(int joint, int count)
             Serial.print(joint_names[joint]);
             Serial.print(direction == IN ? " in " : " out");
             Serial.print("\tmovement at speed ");
-            Serial.println(rc);
+            Serial.print(rc);
+            Serial.print('\n');
 
             speeds[iternum][pwm_val / 10][direction ? 1 : 0] = rc;
 
@@ -1441,11 +1446,12 @@ int find_joint_pwm_speeds(int joint, int count)
             JOINT_SPEED(joint + direction, pwm_val) = speed_total / speed_count;
 
             Serial.print("= ");
-            Serial.println(JOINT_SPEED(joint + direction, pwm_val));
+            Serial.print(JOINT_SPEED(joint + direction, pwm_val));
+            Serial.print('\n');
         }
     }
 
-    Serial.println("\nDone finding joint PWM speeds\n\n");
+    Serial.print("\nDone finding joint PWM speeds\n\n");
     Serial.print("#****************************************************************\n");
 
     return 0;

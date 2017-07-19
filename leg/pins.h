@@ -28,7 +28,7 @@
 #define KNEE_SENSOR_PIN		15
 #define THIGH_SENSOR_PIN	17
 #define HIP_SENSOR_PIN		20
-#define COMPLIANT_SENSOR_PIN	19 /* XXX check this! */
+#define CALF_SENSOR_PIN		16
 
 #define THIGHPWM_OUT_PIN	3
 #define THIGHPWM_IN_PIN		4
