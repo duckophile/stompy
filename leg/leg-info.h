@@ -13,8 +13,8 @@
  */
 
 #define NR_PRESSURES	5		/* 500, 1000, 1500, 2000, 2500 PSI */
-#define NR_JOINTS	4		/* Hip, Thigh, Knee, Compliant link. */
-#define NR_SENSORS	NR_JOINTS       /* Hip, Thigh, Knee, Compliant link. */
+#define NR_JOINTS	3		/* Hip, Thigh, Knee. */
+#define NR_SENSORS	4		/* Hip, Thigh, Knee, Compliant link (Calf). */
 #define NR_VALVES	6		/* One in and one out for each joint. */
 
 /* One of these for each of 4 sensors. */

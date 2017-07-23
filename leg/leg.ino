@@ -3,8 +3,8 @@
 #include <EEPROM.h>
 
 #include "pins.h"
-
 #include "leg-info.h"
+#include "pid.h"
 
 /*
  * Things I want to store in flash:
@@ -118,11 +118,12 @@ const char *joint_down_actions[] = {"forward", "down",  "in"};
  * and *_goal vs. *_goals
  */
 
-int sensor_goal[3]     = {0,0,0};
-double xyz_goal[3]     = {0,0,0};
-double angle_goals[3]  = {0,0,0};
-
+int sensor_goal[NR_SENSORS];
 int current_sensor[NR_SENSORS];
+
+double xyz_goal[3];
+double angle_goals[3];
+
 int current_pwms[NR_VALVES] = { 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF};
 
 /*
@@ -395,7 +396,7 @@ int func_info(void)
         Serial.print(joint_names[i]);
         Serial.print("\tLow: ");
         Serial.print(SENSOR_LOW(i));
-        Serial.print("\tHigh: ");
+        Serial.print("  \tHigh: ");
         Serial.print(SENSOR_HIGH(i));
         Serial.print("\n");
     }
@@ -405,7 +406,7 @@ int func_info(void)
         Serial.print(joint_names[i]);
         Serial.print("\tLow: ");
         Serial.print(min_sensor_seen[i]);
-        Serial.print("\tHigh: ");
+        Serial.print("  \tHigh: ");
         Serial.print(max_sensor_seen[i]);
         Serial.print("\n");
     }

@@ -21,7 +21,7 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
     double theta1, theta2, theta3; /* Goal angles in radians. */
     double hipGoal, thighGoal, kneeGoal; /* Goal sensor values. */
 
-#if 1
+#if 0
     Serial.print("New goal (x,y,z): ");
     Serial.print("(");
     Serial.print(xyz[X]);
@@ -107,7 +107,7 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
     /* Knee - theta3 */
     theta3R = acos( (sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2));
     theta3 = (theta3R * 4068) / 71;
-#if 1
+#if 0
     Serial.print("knee rad = ");
     Serial.print(theta3R);
     Serial.print(" which is from acos( ");
@@ -156,7 +156,7 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         deg_goals[KNEE]  = theta3;
     }
 
-#if 1
+#if 0
     Serial.print("\nNew Goals: (x,y,z):\t");
     print_ftuple(xyz);
     Serial.print('\n');
