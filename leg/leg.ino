@@ -965,12 +965,14 @@ int func_speed(void)
     int rnd;
     int direction;
 
+    disable_interrupts();
+
     srand(millis());
 
     while (1) {
         direction = IN;
         pwm = LOW_PWM_MOVEMENT(joint + direction);
-        rnd = (rand() >> 1) & 0x1F;	/* 0-32 */
+        rnd = (rand() >> 1) % 50 + 3;
         if (measure_speed(HIP, direction, pwm + rnd, 1) == -1)
             break;
 
@@ -978,7 +980,7 @@ int func_speed(void)
 
         direction = OUT;
         pwm = LOW_PWM_MOVEMENT(joint + direction);
-        rnd = (rand() >> 1) & 0x1F;	/* 0-32 */
+        rnd = (rand() >> 1) % 50 + 3;
         if (measure_speed(HIP, direction, pwm + rnd, 1) == -1)
             break;
 

@@ -605,6 +605,7 @@ void capped_pwm_write(int valve, int percent)
 /*
  * Moves the joint and measures the time between sensor changes.
  */
+#warning Delete this!
 int do_timing_thing(int joint, int direction, int pwm_goal, int verbose)
 {
     static int run_count = 0;
@@ -790,7 +791,9 @@ int do_timing_thing(int joint, int direction, int pwm_goal, int verbose)
         Serial.print(pwm_goal);
         Serial.print("%, Speed = ");
         Serial.print(speed);
-        Serial.print('\n');
+        Serial.print(", time = ");
+        Serial.print(((float)total_millis) / 1000.0);
+        Serial.print(" seconds.\n");
 
         Serial.print("# Start sensor reading: ");
         Serial.print(start_sensor);
@@ -857,7 +860,13 @@ failed:
  *
  * The joint is assumed to already be in an appropriate position for
  * this test.
+ *
+ * The acceleration and deceleration are still too abrupt - mostly
+ * acceleration.
+ *
+ * This needs to be able to detect a non-moving joint!
  */
+
 int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 {
     static int run_count = 0;
@@ -922,6 +931,11 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print(" percent PWM (which might be scaled by the PWM module).\n");
 
     valve = joint + direction;
+#warning Is the hip reversed?
+    if (direction == IN) /* XXX fixme:  Why do I have to do this?  What does it do on another joint besides the hip? */
+        valve = joint + OUT;
+    else
+        valve = joint + IN;
 
     /* out = decreasing sensor reading. */
 
@@ -930,7 +944,19 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     this_time = millis();
     last_time = this_time;
 
-    Serial.print("Accelerating...\n");
+    Serial.print("# Accelerating from sensor reading ");
+    Serial.print(sensor_reading);
+    Serial.print("...\n");
+#if 1
+    Serial.print("Looking for ");
+    Serial.print(direction == IN ? "low" : "high");
+    Serial.print(" end of ");
+    Serial.print(direction == IN ? low_sensor_decel : high_sensor_decel);
+    Serial.print(" compared to current ");
+    Serial.print(sensor_reading);
+    Serial.print('\n');
+#endif
+
     /* Accelerate. */
     for (i = 0;i < 30000;i++) {
         capped_pwm_write(valve, current_pwm);
@@ -947,8 +973,8 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         last_time = this_time;
 
         /* Check to see if we're too close to the end of travel. */
-        if (((direction == IN)  && (sensor_reading > high_sensor_decel)) ||
-            ((direction == OUT) && (sensor_reading < low_sensor_decel))) {
+        if (((direction == IN)  && (sensor_reading < low_sensor_decel)) ||
+            ((direction == OUT) && (sensor_reading > high_sensor_decel))) {
             Serial.print("# Prematurely reached end of travel at sensor reading ");
             Serial.print(sensor_reading);
             Serial.print('\n');
@@ -956,9 +982,21 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         }
     }
 
-/*    Serial.print("Hit full PWM.\n");*/
+    Serial.print("# Hit full PWM at sensor reading ");
+    Serial.print(sensor_reading);
+    Serial.print(".\n");
 
-    capped_pwm_write(valve, current_pwm);
+#if 1
+    Serial.print("Looking for ");
+    Serial.print(direction == IN ? "low" : "high");
+    Serial.print(" end of ");
+    Serial.print(direction == IN ? low_sensor_decel : high_sensor_decel);
+    Serial.print(" compared to current ");
+    Serial.print(sensor_reading);
+    Serial.print('\n');
+#endif
+
+    capped_pwm_write(valve, pwm_goal);
     start_millis = millis();
     last_time = start_millis;
     sensor_reading = read_sensor(joint);
@@ -982,8 +1020,8 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         sensor_reading = read_sensor(joint);
 
         /* Check to see if we're close to the end and need to decelerate. */
-        if (((direction == IN)  && (sensor_reading > high_sensor_decel)) ||
-            ((direction == OUT) && (sensor_reading < low_sensor_decel))) {
+        if (((direction == IN)  && (sensor_reading < low_sensor_decel)) ||
+            ((direction == OUT) && (sensor_reading > high_sensor_decel))) {
             break;
         }
     }
@@ -991,15 +1029,16 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     stop_millis = millis();
     stop_sensor = sensor_reading;
 
-#if 0
-    Serial.print("Decelerating\n");
-    Serial.print("Looking for high end of ");
+    Serial.print("# Decelerating from sensor reading ");
+    Serial.print(sensor_reading);
+    Serial.print("...\n");
 
-    Serial.print(sensor_high_end);
-    Serial.print(" or a low end of ");
-    Serial.print(sensor_low_end);
-    Serial.print(" and I should be looking for ");
-    Serial.print(direction == IN ? "high\n" : "low\n");
+#if 1
+    Serial.print("Looking for ");
+    Serial.print(direction == IN ? "low" : "high");
+    Serial.print(" end of ");
+    Serial.print(direction == IN ? low_sensor_decel : high_sensor_decel);
+    Serial.print('\n');
 #endif
 
     /* Decelerate - 1%/ms. */
@@ -1019,8 +1058,8 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
         sensor_reading = read_sensor(joint);
         /* Check to see if we're close enough to the end of travel. */
-        if (((direction == IN)  && (sensor_reading > sensor_high_end)) ||
-            ((direction == OUT) && (sensor_reading < sensor_low_end))) {
+        if (((direction == IN)  && (sensor_reading < (sensor_low_end + 5))) ||
+            ((direction == OUT) && (sensor_reading > (sensor_high_end - 5)))) {
             /* Hit the end of travel. */
             Serial.print("Hit end of travel.\n");
             break;
@@ -1040,7 +1079,9 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         Serial.print(pwm_goal);
         Serial.print("%, Speed = ");
         Serial.print(speed);
-        Serial.print('\n');
+        Serial.print(", time = ");
+        Serial.print(((float)total_millis) / 1000.0);
+        Serial.print(" seconds.\n");
 
         Serial.print("# Start sensor reading: ");
         Serial.print(start_sensor);
@@ -1063,7 +1104,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         Serial.print("\tRun: ");
         Serial.print(run_count);
 
-        Serial.print("\n");
+        Serial.print("\n\n");
     }
 
     return speed;
