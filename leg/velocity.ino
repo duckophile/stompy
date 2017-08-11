@@ -117,6 +117,7 @@ void set_joint_speed(uint32_t joint_num, uint32_t joint_speed)
 
 #warning Hardwired 50% PWM!
     pwm_percent = 50;
+    Serial.print("PWM hardwired to 50%!\n");
 
     set_pwm_goal(joint_num, pwm_percent);
 
@@ -446,6 +447,7 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
      */
     for (i = 0;i < 3;i++)
         speed_scale[i] = movement_inches[i] / largest_delta;
+#warning Scaling factor is almost 0!
 
     if (velocity_debug) {
         Serial.print("Sensor deltas from current to goal:\t");

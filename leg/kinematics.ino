@@ -206,7 +206,7 @@ void calculate_angles(int sensors[], double degrees[], double rad[])
         DEBUG("\t");
         DEBUG(degrees[i]);
     }
-    DEBUGLN("");
+    DEBUG('\n');
 
     return;
 }
@@ -231,7 +231,7 @@ void calculate_xyz(double xyz[], double rad[])
     DEBUG(xyz[Y]);
     DEBUG("\tZ:\t");
     DEBUG(xyz[Z]);
-    DEBUGLN("");
+    DEBUG('\n');
 
     return;
 }

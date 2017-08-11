@@ -112,7 +112,8 @@ void set_pwm(int valve, int percent)
         DEBUG(" normalized from ");
         DEBUG(percent);
         DEBUG(" to ");
-        DEBUGLN(normalized);
+        DEBUG(normalized);
+        DEBUG('\n');
     }
     /* Save the requested PWM percentage, not scaled or normalized. */
     current_pwms[valve] = percent;

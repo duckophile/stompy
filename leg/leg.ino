@@ -1103,18 +1103,18 @@ void read_cmd(void)
             continue;
         }
 
+        if ((ch == '\r') || (ch == '\n')) {
+            Serial.print('\n');
+            break;
+        }
+
+        if (ch < 0x20) /* Ignore other control characters. */
+            continue;
+
         if (cmd_len > 127)
             continue;
 
         Serial.print((char)ch);
-        if (ch == '\r')
-            Serial.print('\n');
-
-        if ((ch == '\r') || (ch == '\n'))
-            break;
-
-        if (ch < 0x20) /* Ignore other control characters. */
-            continue;
 
         cmd_buf[cmd_len++] = ch;
         cmd_buf[cmd_len] = 0;
@@ -1324,7 +1324,7 @@ void read_sensors(int *sensors)
         DEBUG("\t");
         DEBUG(current_sensor[i]);
     }
-    DEBUGLN("");
+    DEBUG('\n');
 
     return;
 }
@@ -1339,7 +1339,7 @@ void write_pwms(void)
 
     if ((deadMan == 0) && (!deadman_forced)) {
         if (!dbg_msg) {
-            DEBUGLN("Deadman has leg disabled.");
+            DEBUG("Deadman has leg disabled.\n");
             dbg_msg = 1;
         }
         return;
@@ -1357,7 +1357,7 @@ void write_pwms(void)
         DEBUG(sensor_goal[i]);
         //compare sensor reading to goal and only move if not close enough
         if (abs(current_sensor[i] - sensor_goal[i]) >= closeEnough) {
-            DEBUGLN("\tJoint is not close enough.");
+            DEBUG("\tJoint is not close enough.\n");
             if (current_sensor[i] > sensor_goal[i]) {
                 set_pwm_goal(i, 100); /* 100% is ambitious. */
 /*                print_reading(i, current_sensor[i], sensor_goal[i], joint_names[i], joint_up_actions[i]);*/

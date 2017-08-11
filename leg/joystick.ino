@@ -107,7 +107,7 @@ void do_joystick_joints(void)
 
     }
 #if 1
-    DEBUGLN("");
+    DEBUG('\n');
 #endif
 
     if (debug_flag && (micros() - last_micros) > 100000)
