@@ -713,9 +713,9 @@ int func_sensors(void)
     int n;
     int i;
     int sample_count = 0;
-    int sense_highs[3]    = {    0,     0,     0};
-    int sense_lows[3]     = {65536, 65536, 65536};
-    int readings[8192];
+    int sense_highs[NR_SENSORS]    = {    0,     0,     0,     0};
+    int sense_lows[NR_SENSORS]     = {65535, 65535, 65535, 65535};
+    int readings[1024]; /* For 10 bit analog. */
 
     memset(readings, 0, sizeof(readings));
 
@@ -723,7 +723,7 @@ int func_sensors(void)
     Serial.print("Sensors: ");
     while (1) {
         sample_count++;
-        for (i = 0; i < 3; i++) {
+        for (i = 0; i < NR_SENSORS; i++) {
             n = analogRead(sensorPin[i]);
 /*            n = read_sensor(i);*/
             if (n < sense_lows[i]) {
@@ -752,7 +752,7 @@ int func_sensors(void)
                 sense_highs[i] = n;
             }
 
-/*            n = n / 8; */	/* Fit 64K samples into 8192 buckets. */
+            /* n = n / 8; */	/* Fit 64K samples into 8192 buckets. */
             readings[n]++;
 
             Serial.print("\t");
@@ -769,7 +769,7 @@ int func_sensors(void)
     Serial.print(" ");
     Serial.print(sample_count);
     Serial.print(" samples.\n");
-    for (i = 0;i < 8192;i++) {
+    for (i = 0;i < 1024;i++) {
         if (readings[i] != 0) {
 /*            Serial.print(i * 8);*/
             Serial.print(i);
@@ -780,7 +780,7 @@ int func_sensors(void)
     }
 
     Serial.print("Low sensor readings:  ");
-    for (i = 0;i < 3;i++) {
+    for (i = 0;i < NR_SENSORS;i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
@@ -789,7 +789,7 @@ int func_sensors(void)
     }
     Serial.print('\n');
     Serial.print("High sensor readings: ");
-    for (i = 0;i < 3;i++) {
+    for (i = 0;i < NR_SENSORS;i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
@@ -990,6 +990,17 @@ int func_speed(void)
     return 0;
 }
 
+int func_pid(void)
+{
+    Serial.print("\nOut...\n");
+    pid_test(HIP, OUT, 60, 0);
+    Serial.print("\nIn...\n");
+    pid_test(HIP, IN, 60, 0);
+    Serial.print("\nDone.\n");
+
+    return 0;
+}
+
 int func_go(void);
 
 struct {
@@ -1021,6 +1032,7 @@ struct {
     { "legnum",     func_legnum    }, /* Set the leg number. */
     { "name",       func_name      }, /* Nmme the leg. */
     { "park",       func_park      }, /* Move leg to parked position. */
+    { "pid",        func_pid       }, /* For debugging PID */
     { "pwm",        func_pwm       }, /* Set a PWM. */
     { "reset",      func_reset     }, /* Reset and reboot the teensy. */
     { "saveflash",  func_saveflash }, /* Write in-memory leg parameters to flash. */

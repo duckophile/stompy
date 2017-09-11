@@ -255,7 +255,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
 
     /* Accelerate from the lowest PWM value that gives movement. */
     current_pwm = LOW_PWM_MOVEMENT(joint + direction);
-    if (current_pwm < pwm_goal)
+    if (current_pwm > pwm_goal)
         current_pwm = pwm_goal;
 
     /* Decelerate down to this value when stopping. */
@@ -898,7 +898,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
     /* Accelerate from the lowest PWM value that gives movement. */
     current_pwm = LOW_PWM_MOVEMENT(joint + direction);
-    if (current_pwm < pwm_goal)
+    if (current_pwm > pwm_goal)
         current_pwm = pwm_goal;
 
     /* Decelerate down to this value when stopping. */
