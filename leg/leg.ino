@@ -59,7 +59,7 @@
  *  degrees = (radians * 4068) / 71
  */
 
-#define ANALOG_BITS	10
+#define ANALOG_BITS	16
 #define PWM_BITS	ANALOG_BITS
 #define PWM_MAX		((1 << PWM_BITS) - 1)
 #define ANALOG_MAX	((1 << ANALOG_BITS) - 1)
@@ -74,6 +74,9 @@ volatile static int old_debug_flag = 0;
 volatile static int periodic_debug_flag = 0;
 #define DEBUG   if(debug_flag)Serial.print
 #define DEBUGLN if(debug_flag)Serial.println
+
+#define ENABLED  1
+#define DISABLED 0
 
 /* Timing info for the ISR loop. */
 uint32_t isr_max = 0;
@@ -138,7 +141,7 @@ double current_rad[3];
 int sensorPin[NR_SENSORS] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN, CALF_SENSOR_PIN};
 // this is the distance in sensor reading that is close enough for directed movement
 // I am putting this here so we can avoid chasing our tails early in positional control
-int closeEnough = 2;
+int closeEnough = ((1 << PWM_BITS) / 512);
 
 #define JOYSTICK_OFF		0
 #define JOYSTICK_JOINT		1
@@ -327,6 +330,8 @@ int func_info(void)
     Serial.print(leg_enabled);
     Serial.print(" Interrupts enabled: ");
     Serial.print(interrupts_enabled);
+    Serial.print(" PWM scale: ");
+    Serial.print(get_pwm_scale());
     Serial.print("\n");
 
     Serial.print("# Current XYZ:     ");
@@ -343,12 +348,20 @@ int func_info(void)
     }
     Serial.print('\n');
 
-    Serial.print("# Current angles:  ");
+    Serial.print("# Current degrees: ");
     for (i = 0; i < 3; i++) {
         Serial.print("\t");
         Serial.print(joint_names[i]);
         Serial.print("\t");
         Serial.print(current_deg[i]);
+    }
+    Serial.print('\n');
+    Serial.print("# Current radians: ");
+    for (i = 0; i < 3; i++) {
+        Serial.print("\t");
+        Serial.print(joint_names[i]);
+        Serial.print("\t");
+        Serial.print(current_rad[i]);
     }
     Serial.print('\n');
 
@@ -465,7 +478,7 @@ void print_leg_info(leg_info_t *li)
 
     Serial.print("#\n# Sensor\tLow\tHigh\tTravel\n");
     for (i = 0;i < NR_JOINTS;i++) {
-        Serial.print("#\t");
+        Serial.print("# ");
         Serial.print(joint_names[i]);
         Serial.print("     \t");
         if (li->sensor_limits[i].sensor_low == 0xFFFF)
@@ -483,6 +496,22 @@ void print_leg_info(leg_info_t *li)
         else
             Serial.print(li->sensor_limits[i].sensor_high - li->sensor_limits[i].sensor_low);
 
+        Serial.print('\n');
+    }
+
+    Serial.print("#\n# Angle data:\n#\n");
+    Serial.print("# Joint\t\tunits_per_deg\tAngle low\tAngle high\tDegrees travel\n");
+    for (n = 0;n < NR_JOINTS;n++) {
+        Serial.print("# ");
+        Serial.print(joint_names[n]);
+        Serial.print("\t\t");
+        Serial.print(li->joint_angles[n].units_per_deg);
+        Serial.print("\t\t");
+        Serial.print(li->joint_angles[n].angle_low);
+        Serial.print("\t\t");
+        Serial.print(li->joint_angles[n].angle_high);
+        Serial.print("\t\t");
+        Serial.print(li->joint_angles[n].angle_high - li->joint_angles[n].angle_low);
         Serial.print('\n');
     }
 
@@ -575,17 +604,17 @@ void fixup_blank_flash_values(void)
      * sure that we actually set them.
      */
     if (SENSOR_LOW(HIP)    == 0xFFFF)
-        SENSOR_LOW(HIP)    = 170;
+        SENSOR_LOW(HIP)    = 10880;
     if (SENSOR_HIGH(HIP)   == 0xFFFF)
-        SENSOR_HIGH(HIP)   = 650;
+        SENSOR_HIGH(HIP)   = 41600;
     if (SENSOR_LOW(THIGH)  == 0xFFFF)
-        SENSOR_LOW(THIGH)  = 170;
+        SENSOR_LOW(THIGH)  = 10880;
     if (SENSOR_HIGH(THIGH) == 0xFFFF)
-        SENSOR_HIGH(THIGH) = 650;
+        SENSOR_HIGH(THIGH) = 41600;
     if (SENSOR_LOW(KNEE)   == 0xFFFF)
-        SENSOR_LOW(KNEE)   = 170;
+        SENSOR_LOW(KNEE)   = 10880;
     if (SENSOR_HIGH(KNEE)  == 0xFFFF)
-        SENSOR_HIGH(KNEE)  = 650;
+        SENSOR_HIGH(KNEE)  = 41600;
 
     UNITS_PER_DEG(HIP)   = (SENSOR_HIGH(HIP)   - SENSOR_LOW(HIP))   / (ANGLE_HIGH(HIP)   - ANGLE_LOW(HIP));
     UNITS_PER_DEG(THIGH) = (SENSOR_HIGH(THIGH) - SENSOR_LOW(THIGH)) / (ANGLE_HIGH(THIGH) - ANGLE_LOW(THIGH));
@@ -715,7 +744,7 @@ int func_sensors(void)
     int sample_count = 0;
     int sense_highs[NR_SENSORS]    = {    0,     0,     0,     0};
     int sense_lows[NR_SENSORS]     = {65535, 65535, 65535, 65535};
-    int readings[1024]; /* For 10 bit analog. */
+    int readings[8192]; /* Need to collapse 16 bits into 8192 buckets. */
 
     memset(readings, 0, sizeof(readings));
 
@@ -752,7 +781,7 @@ int func_sensors(void)
                 sense_highs[i] = n;
             }
 
-            /* n = n / 8; */	/* Fit 64K samples into 8192 buckets. */
+            n = n / 8;	/* Fit 64K samples into 8192 buckets. */
             readings[n]++;
 
             Serial.print("\t");
@@ -769,7 +798,7 @@ int func_sensors(void)
     Serial.print(" ");
     Serial.print(sample_count);
     Serial.print(" samples.\n");
-    for (i = 0;i < 1024;i++) {
+    for (i = 0;i < 8192;i++) {
         if (readings[i] != 0) {
 /*            Serial.print(i * 8);*/
             Serial.print(i);
@@ -908,18 +937,24 @@ int func_foo(void)
 
 int park_leg(void)
 {
+    int old_int_state;
+    int old_leg_state;
+    int speed;
+
     Serial.print("\nParking leg.\n");
 
     pwms_off();
-    disable_interrupts();
-    set_pwm_scale(100);
-    enable_leg();
+    old_int_state = set_interrupt_state(0);
+    old_leg_state = set_leg_state(ENABLED);
 
     /* Get thigh and knee into place. */
 
     /* I should use a low speed PWM value if I have one. */
     Serial.print("# Retracting thigh.\n");
-    if (move_joint_all_the_way(THIGHPWM_IN, 50) == -1)
+    speed = LOW_PWM_MOVEMENT(THIGHPWM_IN) + 5;
+    if (speed == 0xFFFF)
+        speed = 50;
+    if (move_joint_all_the_way(THIGHPWM_IN, speed) == -1)
         Serial.print("ERROR - couldn't retract thigh!\n");
     pwms_off();
 
@@ -927,15 +962,28 @@ int park_leg(void)
 
     Serial.print("# Retracting knee.\n");
     /* Move knee up. */
-    if (move_joint_all_the_way(KNEEPWM_OUT, 50) == -1)
+    speed = LOW_PWM_MOVEMENT(KNEEPWM_OUT) + 5;
+    if (speed == 0xFFFF)
+        speed = 50;
+    if (move_joint_all_the_way(KNEEPWM_OUT, speed) == -1)
         Serial.print("ERROR - couldn't retract knee!\n");
+
+    /* Centering the hip would be better. */
+    Serial.print("# Retracting hip.\n");
+    /* Move hip back. */
+    speed = LOW_PWM_MOVEMENT(HIPPWM_IN) + 5;
+    if (speed == 0xFFFF)
+        speed = 50;
+    if (move_joint_all_the_way(HIPPWM_IN, speed) == -1)
+        Serial.print("ERROR - couldn't retract HIP!\n");
 
     pwms_off();
 
     /* Set the goal to wherever we are now. */
     reset_current_location();
 
-    /* XXX fixme: Center hip. */
+    set_leg_state(old_leg_state);
+    set_interrupt_state(old_int_state);
 
     return 0;
 }
@@ -992,12 +1040,13 @@ int func_speed(void)
 
 int func_pid(void)
 {
+#if 0
     Serial.print("\nOut...\n");
     pid_test(HIP, OUT, 60, 0);
     Serial.print("\nIn...\n");
     pid_test(HIP, IN, 60, 0);
     Serial.print("\nDone.\n");
-
+#endif
     return 0;
 }
 
@@ -1717,9 +1766,19 @@ void enable_leg(void)
     digitalWrite(ENABLE_PIN, HIGH);
     digitalWrite(ENABLE_PIN_HIP, HIGH);
 
-    pwms_off();
-
     leg_enabled = 1;
 
     return;
+}
+
+int set_leg_state(int state)
+{
+    int old_leg_state = leg_enabled;
+
+    if (state)
+        enable_leg();
+    else
+        disable_leg();
+
+    return old_leg_state;
 }

@@ -38,6 +38,15 @@ This gives a range of 642 on the hip.
 
 */
 
+#warning I need convert units to inches/sec of foot travel!
+/*
+ * I THINK I need inches/sec of foot travel, with the foot traveling
+ * in an arc.  Maybe I can add up discrete distance measurements as
+ * the foot moves through its calibration arc?
+ *
+ *
+ */
+
 int check_keypress(void)
 {
     if (Serial.available() > 0) {
@@ -63,6 +72,9 @@ int check_keypress(void)
  * This should take a joint (0-2) and a direction.
  *
  * This is fairly crude.
+ *
+ * XXX fixme: Looks like this isn't moving the thigh fully in against
+ * the stop?
  */
 int move_joint_all_the_way(int valve, int pwm_percent)
 {
@@ -213,6 +225,9 @@ int move_joint_all_the_way(int valve, int pwm_percent)
 /*
  * This is pointlessly contorted - measure_speed() is
  * better and does the same stuff.
+ *
+ * XXX fixme: This doesn't appear to be decelerating on the IN stroke
+ * (for the knee and thigh anyway, the hip might be).
  */
 
 int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
@@ -268,10 +283,10 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
      * XXX fixme: The distance from the end of travel should be based
      * on the difference between the desired PWM and LOW_PWM_MOVEMENT.
      */
-    high_sensor_decel = SENSOR_HIGH(joint) - 40; /* When to start decelerating. */
-    low_sensor_decel  = SENSOR_LOW(joint)  + 40; /* When to start decelerating. */
-    sensor_high_end   = SENSOR_HIGH(joint) - 20; /* close enough to the end of travel. */
-    sensor_low_end    = SENSOR_LOW(joint)  + 20;
+    high_sensor_decel = SENSOR_HIGH(joint) - 2400; /* When to start decelerating. */
+    low_sensor_decel  = SENSOR_LOW(joint)  + 2400; /* When to start decelerating. */
+    sensor_high_end   = SENSOR_HIGH(joint) - 1200; /* close enough to the end of travel. */
+    sensor_low_end    = SENSOR_LOW(joint)  + 1200;
 
     /* How much to increment/decrement the PWM at once when accelerating/decelerating. */
     pwm_inc = 5;
@@ -326,7 +341,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
     else
         no_change_limit = 100;
 
-    for (i = 0;i < 30000;i++) {
+    for (i = 0;i < 3000;i++) {
         if (!check_deadman()) {
             failed = 1;
             break;
@@ -647,10 +662,10 @@ int do_timing_thing(int joint, int direction, int pwm_goal, int verbose)
      * XXX fixme: The distance from the end of travel should be based
      * on the difference between the desired PWM and LOW_PWM_MOVEMENT.
      */
-    high_sensor_decel = SENSOR_HIGH(joint) - 30; /* When to start decelerating. */
-    low_sensor_decel  = SENSOR_LOW(joint)  + 30; /* When to start decelerating. */
-    sensor_high_end   = SENSOR_HIGH(joint) - 10; /* close enough to the end of travel. */
-    sensor_low_end    = SENSOR_LOW(joint)  + 10;
+    high_sensor_decel = SENSOR_HIGH(joint) - 1800; /* When to start decelerating. */
+    low_sensor_decel  = SENSOR_LOW(joint)  + 1800; /* When to start decelerating. */
+    sensor_high_end   = SENSOR_HIGH(joint) - 600; /* close enough to the end of travel. */
+    sensor_low_end    = SENSOR_LOW(joint)  + 600;
 
     for (i = 0;i < ANALOG_MAX + 1;i++)
         sensor_timing[i] = 0;
@@ -884,6 +899,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     int total_sensor;
     int high_sensor_decel, low_sensor_decel;
     int sensor_high_end, sensor_low_end;
+    int old_pwm_scale;
     uint32_t this_time, last_time;
 
     pwms_off();
@@ -893,7 +909,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
     disable_interrupts();
 
-    set_pwm_scale(100);
+    old_pwm_scale = set_pwm_scale(100);
     enable_leg();
 
     /* Accelerate from the lowest PWM value that gives movement. */
@@ -918,10 +934,10 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print(SENSOR_LOW(joint));
     Serial.print('\n');
 
-    high_sensor_decel = SENSOR_HIGH(joint) - 40; /* When to start decelerating. */
-    low_sensor_decel  = SENSOR_LOW(joint)  + 40; /* When to start decelerating. */
-    sensor_high_end   = SENSOR_HIGH(joint) - 10; /* close enough to the end of travel. */
-    sensor_low_end    = SENSOR_LOW(joint)  + 10;
+    high_sensor_decel = SENSOR_HIGH(joint) - 2400; /* When to start decelerating. */
+    low_sensor_decel  = SENSOR_LOW(joint)  + 2400; /* When to start decelerating. */
+    sensor_high_end   = SENSOR_HIGH(joint) - 600;  /* close enough to the end of travel. */
+    sensor_low_end    = SENSOR_LOW(joint)  + 600;
 
     /* XXX fixme:  This should only be printed if verbose. */
     Serial.print("# Measuring speed of ");
@@ -931,11 +947,6 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print(" percent PWM (which might be scaled by the PWM module).\n");
 
     valve = joint + direction;
-#warning Is the hip reversed?
-    if (direction == IN) /* XXX fixme:  Why do I have to do this?  What does it do on another joint besides the hip? */
-        valve = joint + OUT;
-    else
-        valve = joint + IN;
 
     /* out = decreasing sensor reading. */
 
@@ -1058,8 +1069,8 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
         sensor_reading = read_sensor(joint);
         /* Check to see if we're close enough to the end of travel. */
-        if (((direction == IN)  && (sensor_reading < (sensor_low_end + 5))) ||
-            ((direction == OUT) && (sensor_reading > (sensor_high_end - 5)))) {
+        if (((direction == IN)  && (sensor_reading < (sensor_low_end + 300))) ||
+            ((direction == OUT) && (sensor_reading > (sensor_high_end - 300)))) {
             /* Hit the end of travel. */
             Serial.print("Hit end of travel.\n");
             break;
@@ -1111,6 +1122,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
 failed:
     pwms_off();
+    set_pwm_scale(old_pwm_scale);
 
     return -1;
 }
@@ -1135,7 +1147,7 @@ failed:
  */
 
 /* Minimum sensor value change that indicates movement. */
-#define MIN_SENSOR_MOVEMENT	40
+#define MIN_SENSOR_MOVEMENT	2400
 
 int find_joint_first_movement(int joint, int direction, int pwm_val, int pwm_inc)
 {
@@ -1247,7 +1259,10 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     Serial.print(direction == IN ? "low" : "high");
     Serial.print(" sensor value for ");
     Serial.print(joint_names[joint]);
-    Serial.print(direction == IN ? " IN\n" : " OUT\n");
+    Serial.print(direction == IN ? " IN" : " OUT");
+    Serial.print(" using ");
+    Serial.print(pwm_val);
+    Serial.print("% PWM.\n");
     Serial.print("#************************************************\n");
 
     valve = joint + direction;
@@ -1283,20 +1298,32 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
         }
 
         sensor_val = read_sensor(joint);
+        Serial.print("semsor = ");
+        Serial.print(sensor_val);
 
         if (direction == IN) {
+            Serial.print(" - is it less than ");
+            Serial.print(sensor_limit);
+            Serial.print("? ");
             /* Joint going IN, sensor reading going down. */
             if (sensor_val < sensor_limit) {
+                Serial.print("yes.");
                 sensor_limit = sensor_val;
                 n = 0;	/* Restart one second wait. */
             }
         } else { /* direction == OUT */
+            Serial.print(" - is it greater than ");
+            Serial.print(sensor_limit);
             /* Joint going OUT, sensor reading going up. */
+            Serial.print("? ");
             if (sensor_val > sensor_limit) {
+                Serial.print("yes.");
                 sensor_limit = sensor_val;
                 n = 0;	/* Restart one second wait. */
             }
         }
+        Serial.print("\n");
+        delay(100); /* XXX remove me */
         if (n == 0) {
             Serial.print(" ");
             Serial.print(sensor_val);
@@ -1310,7 +1337,7 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
          * the low limit, I just need to find out what it is.
          */
         if (joint == THIGH) {
-            if (sensor_val > 600) {
+            if (sensor_val > 38000) {
                 Serial.print("\n**** Hit artificial thigh limit!\n\n");
                 break;
             }
@@ -1324,6 +1351,8 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
 
     Serial.print("\n");
 
+    delay(100);	/* 100ms delay. */
+
     Serial.print("# ");
     Serial.print(joint_names[joint]);
     Serial.print(" ");
@@ -1332,6 +1361,8 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     Serial.print(" sensor reading: ");
     Serial.print(sensor_limit);
     Serial.print("\n\n");
+
+    delay(100);	/* 100ms delay. */
 
     if (direction == IN) {
         SENSOR_LOW(joint) = sensor_limit;
@@ -1344,6 +1375,8 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
         Serial.print(SENSOR_HIGH(joint));
         Serial.print('\n');
     }
+
+    Serial.print("\nDone with limit discovery.\n");
 
     return rc;
 }
@@ -1538,7 +1571,7 @@ int find_joint_limits(int joint, int direction)
 
     if (i != 0) {
         /* Find the sensor limit. */
-        if (find_joint_sensor_limit(joint, direction, LOW_PWM_MOVEMENT(joint + direction) + 5))
+        if (find_joint_sensor_limit(joint, direction, LOW_PWM_MOVEMENT(joint + direction) + 10))
             goto fail;
     }
     rc = 0;
@@ -1554,6 +1587,7 @@ int set_joint_limits(int joint)
 {
     int rc = -1;
     int direction = IN;
+    int old_pwm_scale;
 
     pwms_off();
 
@@ -1564,7 +1598,7 @@ int set_joint_limits(int joint)
 
     disable_interrupts();
 
-    set_pwm_scale(100);
+    old_pwm_scale = set_pwm_scale(100);
 
     enable_leg();
 
@@ -1598,8 +1632,16 @@ int set_joint_limits(int joint)
         break;
     }
 
+    if (joint == THIGH)
+        direction = OUT;
+    else
+        direction = IN;
+
     /* XXX Maybe I should pass speed in? */
-    Serial.print("\n# Finding joint limits for IN.\n");
+    Serial.print("\n# Finding joint limits for ");
+    Serial.print(direction_names[direction]);
+    Serial.print("...\n");
+
     if (find_joint_limits(joint, direction) == -1)
         ;
 /*        goto fail;*/
@@ -1608,18 +1650,21 @@ int set_joint_limits(int joint)
     delay(1000);
 
     /* And the same thing for the other directoon. */
-    if (direction == IN)
-        direction = OUT;
-    else
+    if (direction == OUT)
         direction = IN;
+    else
+        direction = OUT;
+    Serial.print("\n# Finding joint limits for ");
+    Serial.print(direction_names[direction]);
+    Serial.print("...\n");
 
-    Serial.print("\n# Finding joint limits for OUT.\n");
     if (find_joint_limits(joint, direction) == -1)
         goto fail;
 
     Serial.print("# Done, waiting...\n");
     delay(1000);
 
+    /* XXX FIXME:  units_per_deg isn't linear over the travel! */
     UNITS_PER_DEG(joint) = (SENSOR_HIGH(joint) - SENSOR_LOW(joint)) / (ANGLE_HIGH(joint) - ANGLE_LOW(joint));
 
     rc = 0; /* Success! */
@@ -1660,6 +1705,7 @@ int set_joint_limits(int joint)
 
 fail:
     pwms_off();
+    set_pwm_scale(old_pwm_scale);
     reset_current_location();
 
     return rc;
@@ -1676,6 +1722,9 @@ fail:
 
 int calibrate_joint(int joint, int rep_count)
 {
+    int old_pwm_scale;
+    int old_int_state;
+
     if (!check_deadman()) {
         Serial.print("ERROR - Deadman has leg disabled!\n");
         return -1;
@@ -1684,10 +1733,10 @@ int calibrate_joint(int joint, int rep_count)
     if (rep_count == 0)
         rep_count = 1;
 
-    set_pwm_scale(100);
+    old_pwm_scale = set_pwm_scale(100);
 
     pwms_off();
-    disable_interrupts();
+    old_int_state = set_interrupt_state(0);
     enable_leg();
 
     /* Get thigh and knee into place. */
@@ -1724,13 +1773,10 @@ int calibrate_joint(int joint, int rep_count)
     if (find_joint_pwm_speeds(joint, rep_count) == -1)
         goto fail;
 
-    pwms_off();
     Serial.print("# Done, waiting...\n");
     delay(1000);
 
     park_leg();
-
-    set_pwm_scale(60);	/* XXX fixme: This should be some default value - midpoint betwen first movement and 100%? */
 
     Serial.print('\n');
     Serial.print("# Done with calibration.\n");
@@ -1739,6 +1785,8 @@ int calibrate_joint(int joint, int rep_count)
 fail:
     pwms_off();
     reset_current_location();
+    set_pwm_scale(old_pwm_scale);
+    set_interrupt_state(old_int_state);
 
     return 0;
 }

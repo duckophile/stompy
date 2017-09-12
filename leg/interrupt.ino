@@ -59,6 +59,22 @@ void enable_interrupts(void)
     return;
 }
 
+/*
+ *  Enables or disables interrupts, and returns the previous state so
+ *  the caller can restore that state if desired.
+ */
+int set_interrupt_state(int state)
+{
+    int old_state = interrupts_enabled;
+
+    if (state)
+        enable_interrupts();
+    else
+        disable_interrupts();
+
+    return old_state;
+}
+
 void interrupt_setup(void)
 {
 /*    pinMode(13,OUTPUT);*/

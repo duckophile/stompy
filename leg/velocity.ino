@@ -8,11 +8,6 @@
  * TODO:
  *
  * I should have the joint speed normalized to some other scale.
- *
- * The joint speed for hip out in sensor_units/sec is calculated with
- * speed = (8.3 * pwm) - 328
- *
- * pwm = (speed + 328) / 8.3
  */
 
 /*
@@ -94,18 +89,31 @@ int velocity_init(void)
 /*
  * Takes a joint and a speed in sensor_units/sec and sets a PWM value
  * that should give that speed.
+ *
+ * XXX fixme: The speed should be different for each direction.
  */
-void set_joint_speed(uint32_t joint_num, uint32_t joint_speed)
+void set_joint_speed(uint32_t valve, uint32_t joint_speed)
 {
-    int pwm_percent;
+    int pwm_percent = 0;
+    int joint;
 
-    /*
-     * XXX FIXME: The speed calculation should be different for each
-     * joint and direction.
-     */
-#warning Need different speeds for each joint!
+    joint = valve;
+    if (joint > 3)
+        joint -= 3;
 
-    pwm_percent = ((double)joint_speed + 328.0) / 8.3;
+    switch(joint) {
+    case HIP:
+        pwm_percent = (joint_speed + 290) / 7.2;	/* Base on HIP OUT. */
+        break;
+    case KNEE:
+        pwm_percent = (joint_speed + 210) / 7.1;	/* Base on KNEE OUT. */
+        break;
+    case THIGH:
+        pwm_percent = (joint_speed + 105) / 4.0;	/* Base on THIGH OUT. */
+        break;
+    }
+
+    pwm_percent /= 64; /* XXX fixme:  Scale from 10 bit coefficients above to 16 bits. */
 
     if (velocity_debug) {
         Serial.print(" input speed (sensor/sec): ");
@@ -115,11 +123,13 @@ void set_joint_speed(uint32_t joint_num, uint32_t joint_speed)
         Serial.print('\n');
     }
 
+    /*
 #warning Hardwired 50% PWM!
     pwm_percent = 50;
     Serial.print("PWM hardwired to 50%!\n");
+    */
 
-    set_pwm_goal(joint_num, pwm_percent);
+    set_scaled_pwm_goal(valve, pwm_percent);
 
     return;
 }
@@ -423,12 +433,23 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
         /* The distance the sensor needs to move. */
         sensor_delta[i] = abs(sensor_goal[i] - current_sensor[i]);
         /* XXX Does this make sense when the deltas describe both directions? */
+#if 0
         if (abs(sensor_delta[i]) > largest_delta)
             largest_delta = abs(sensor_delta[i]);
+#endif
 
         /* Convert each sensor reading into inches. */
         movement_inches[i] = fabs((float)sensor_delta[i] / (float)cylinder_inch_conv[i]);
-
+#if 0
+        Serial.print(i);
+        Serial.print(' ');
+        Serial.print(sensor_delta[i]);
+        Serial.print(' ');
+        Serial.print(cylinder_inch_conv[i]);
+        Serial.print(" = ");
+        Serial.print(movement_inches[i]);
+        Serial.print('\n');
+#endif
         /* Make a note of the longest movement. */
         if (movement_inches[i] > largest_delta)
             largest_delta = movement_inches[i];
@@ -445,11 +466,24 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
      * that no joint moves so fast that the other joints can't keep
      * up.
      */
-    for (i = 0;i < 3;i++)
+    for (i = 0;i < 3;i++) {
         speed_scale[i] = movement_inches[i] / largest_delta;
-#warning Scaling factor is almost 0!
+#if 0
+        Serial.print(i);
+        Serial.print(' ');
+        Serial.print(movement_inches[i]);
+        Serial.print(" / ");
+        Serial.print(largest_delta);
+        Serial.print(" = ");
+        Serial.print(speed_scale[i]);
+        Serial.print('\n');
+#endif
+    }
 
     if (velocity_debug) {
+        Serial.print("Largest delta = ");
+        Serial.print(largest_delta);
+        Serial.print('\n');
         Serial.print("Sensor deltas from current to goal:\t");
         for (i = 0;i < 3; i++) {
             Serial.print(sensor_delta[i]);
@@ -699,7 +733,7 @@ void velocity_loop(void)
     double last_distance = 0.0;
     double speed_scale[3];
     int joint_direction[3];
-    int leg_speed = 70; /* XXX fixme:  Hardwired value. */
+    int leg_speed = 30; /* XXX fixme:  Hardwired value. */
     static int debug_count = 0;
     static int pwms_turned_off = 0;
 

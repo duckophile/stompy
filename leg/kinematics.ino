@@ -108,20 +108,32 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
     theta3R = acos( (sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2));
     theta3 = (theta3R * 4068) / 71;
 #if 0
+    Serial.print(acos( (sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2)));
+    Serial.print(' ');
+    Serial.print(theta3R);
+    Serial.print('\n');
     Serial.print("knee rad = ");
     Serial.print(theta3R);
-    Serial.print(" which is from acos( ");
+    Serial.print(" which is from acos( sq(");
+    Serial.print(L3);
+    Serial.print(") + sq(");
+    Serial.print(L2);
+    Serial.print(") - sq(");
+    Serial.print(r);
+    Serial.print(") = ");
     Serial.print(sq(L3) + sq(L2) - sq(r));
     Serial.print(" / ");
     Serial.print((2*L3*L2));
     Serial.print(" ), or acos( ");
     Serial.print((sq(L3) + sq(L2) - sq(r)) / (double)(2*L3*L2));
-    Serial.print(" ) ");
 
-    Serial.print(" and ");
+    Serial.print(" / ");
     Serial.print((2*L3*L2));
-    Serial.print(" theta3 = ");
+    Serial.print(" )  = ");
+    Serial.print(theta3R);
+    Serial.print(". theta3 = ");
     Serial.print(theta3);
+    Serial.print('\n');
 #endif
     kneeGoal= ((ANGLE_HIGH(KNEE) - theta3) * UNITS_PER_DEG(KNEE)) + SENSOR_LOW(KNEE);
     //kneeGoal = ((theta3 - ANGLE_LOW(KNEE)) * UNITS_PER_DEG(KNEE)) + SENSOR_LOW(KNEE);
@@ -188,9 +200,12 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
  *
  * Takes sensor readings from sensors[][] and calculates the
  * angles in degrees into degrees[] and radians into rad[].
+ *
+ * XXX fixme:  The units per degree isn't constant over the movement of the joint!
  */
 void calculate_angles(int sensors[], double degrees[], double rad[])
 {
+#warning units_per_deg isnt constant over the travel of the sensor!
     degrees[HIP]   = ((sensors[HIP] - SENSOR_LOW(HIP)) / UNITS_PER_DEG(HIP)) + ANGLE_LOW(HIP);
     degrees[THIGH] = ANGLE_HIGH(THIGH) - ((sensors[THIGH] - SENSOR_LOW(THIGH)) / UNITS_PER_DEG(THIGH));
     degrees[KNEE]  = ANGLE_HIGH(KNEE)  - ((sensors[KNEE]  - SENSOR_LOW(KNEE))  / UNITS_PER_DEG(KNEE));

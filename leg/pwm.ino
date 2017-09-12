@@ -16,19 +16,26 @@ void set_pwm_freq(int freq)
     return;
 }
 
+int get_pwm_scale(void)
+{
+    return pwm_scale;
+}
+
 /*
  * Sets a scaling factor for all values written to the PWMs, from
  * 0-100%.
  */
-void set_pwm_scale(int scale)
+int set_pwm_scale(int scale)
 {
+    int old_scale = pwm_scale;
+
     pwm_scale = scale;
 
     Serial.print("PWM scaling factor set to ");
     Serial.print(pwm_scale);
     Serial.print('\n');
 
-    return;
+    return old_scale;
 }
 
 /*
@@ -66,12 +73,12 @@ void set_pwm(int valve, int percent)
     analogWrite(pwm_pins[other_valve], 0);
     current_pwms[other_valve] = 0;
 
-    normalized = (percent * PWM_MAX) / 100; /* Normalize to 10 bits. */
+    normalized = (percent * PWM_MAX) / 100; /* Normalize to the analog resolution. */
     if (normalized > PWM_MAX)
         normalized = PWM_MAX;
 
 #if 0
-    /* Write the normalized, normalized PWM percent to the PWM. */
+    /* Write the normalized PWM percent to the PWM. */
     if (normalized == 0) {
         Serial.print("Writing 0 to PWM ");
         Serial.print(valve);
@@ -121,6 +128,7 @@ void set_pwm(int valve, int percent)
     return;
 }
 
+
 /*
  * Set a goal for a particular PWM.  The PWM is accelerated towards
  * that goal.  XXX fixme:  No, it's not currently accelerated.
@@ -141,7 +149,7 @@ void set_pwm_goal(int pwm_id, int value)
 */
 
     if (value > 100) {
-        Serial.print("ERROR PWM value ");
+        Serial.print("ERROR PWM percentage ");
         Serial.print(value);
         Serial.print(" is invalid for PWM ");
         Serial.print(pwm_id);
@@ -179,6 +187,47 @@ void set_pwm_goal(int pwm_id, int value)
         pwm_goals[pwm_id + other_pwm] = 0;
         set_pwm(pwm_id + other_pwm, 0);
     }
+
+    return;
+}
+
+/*
+ * Percentage is a desired percentage of the PWM usable range - for
+ * most valves this is ~40% PWM to 100% PWM.  This is scaled to an
+ * absolute PWM value, which is written to the PWM.
+ */
+void set_scaled_pwm_goal(int pwm_id, int percentage)
+{
+    int usable_range;
+    int ljm;
+    int scaled_percentage;
+
+    ljm = leg_info.valves[pwm_id].low_joint_movement;
+    usable_range = 100 - ljm; /* probably around 60. */
+
+    /* Scale PWM for global PWM scaling factor. */
+    percentage = (percentage * pwm_scale) / 100;
+
+    /* Fit the percentage to the usable range of the PWM. */
+    scaled_percentage = (percentage * usable_range) / 100;
+    /* And move it to the proper place of thge scale. */
+    scaled_percentage += ljm;
+
+#if 0
+    Serial.print("Scaling pwm ");
+    Serial.print(pwm_id);
+    Serial.print(" desired percentage ");
+    Serial.print(percentage);
+    Serial.print("% with scaling factor of ");
+    Serial.print(pwm_scale);
+    Serial.print("% to fit usable range of ");
+    Serial.print(usable_range);
+    Serial.print(" and got absolute PWM ");
+    Serial.print(scaled_percentage);
+    Serial.print("%.\n");
+#endif
+
+    set_pwm_goal(pwm_id, scaled_percentage);
 
     return;
 }

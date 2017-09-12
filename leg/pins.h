@@ -34,8 +34,8 @@
 #define THIGHPWM_IN_PIN		4
 #define KNEEPWM_OUT_PIN		5
 #define KNEEPWM_IN_PIN		6
-#define HIPPWM_IN_PIN		9
-#define HIPPWM_OUT_PIN		10
+#define HIPPWM_IN_PIN		10
+#define HIPPWM_OUT_PIN		9
 
 #define M1FB_PIN		21
 #define M2FB_PIN		22
