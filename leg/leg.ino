@@ -661,6 +661,18 @@ void fixup_blank_flash_values(void)
         if (LOW_PWM_MOVEMENT(i) == 0xFF)
             LOW_PWM_MOVEMENT(i) = 50;
 
+    /*
+     * Fudge the thigh high sensor reading, since we can't determine it
+     * experimentally due to ground interference.
+     *
+     * The thigh cylinder is 14 inches long, and the string pot should
+     * give 4196 units/inch.
+     */
+    if (SENSOR_HIGH(THIGH) < 40000) {
+        Serial.print("# Fixing too-low thigh high sensor reading.\n");
+        SENSOR_HIGH(THIGH) = SENSOR_LOW(THIGH) + (4196 * 14);
+    }
+
     return;
 }
 
