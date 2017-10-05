@@ -1439,6 +1439,8 @@ void setup(void)
     disable_leg();
     pwms_off();
 
+    set_pwm_scale(30);	/* Default to 30% of PWM max speed. */
+
     delay(2000); /* Give the serial console time to come up. */
 
     read_leg_info(&leg_info);
