@@ -27,7 +27,8 @@
  *
  # Sensor        Low     High    Travel
  # hip           5580    46517   40937 = 5781/inch
- # thigh         2006    38193   36187 = 2584/inch (wrong!)
+ # thigh (meas)  2006    38193   36187 = 2584/inch (wrong!)
+ # thigh (theor) 2006    60750   58744 = 4196/inch
  # knee          3056    53285   50229 = 4196/inch
  *
  *
@@ -142,10 +143,11 @@ int set_joint_speed(uint32_t valve, uint32_t joint_speed)
            leg_info.valves[valve].joint_speed[n];
     /* Where our desired speed falls in that window. */
     offset = joint_speed - leg_info.valves[valve].joint_speed[n];
-    scale = diff / offset;
+    scale = offset / diff;
     pwm_offset = (uint32_t)(10.0 * scale);
     pwm_percent = (n * 10) + pwm_offset;
 
+#if 0
     Serial.print("# Setting PWM for Valve ");
     Serial.print(valve);
     Serial.print(" speed ");
@@ -158,7 +160,12 @@ int set_joint_speed(uint32_t valve, uint32_t joint_speed)
     Serial.print(scale);
     Serial.print(", final percent = ");
     Serial.print(pwm_percent);
+    Serial.print(", diff = ");
+    Serial.print(diff);
+    Serial.print(", offset = ");
+    Serial.print(offset);
     Serial.print("\n");
+#endif
 
     set_scaled_pwm_goal(valve, pwm_percent);
 
@@ -237,9 +244,13 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
 
         /* Scale the desired speed into the range LOW_PWM_MOVEMENT...100. */
         joint_speed = (int)((float)joint_speed * pwm_range_scale);
-        joint_speed += LOW_PWM_MOVEMENT(valve);
+        if (joint_speed != 0)
+            joint_speed += LOW_PWM_MOVEMENT(valve);
 
-        /* joint_speed should always be greater than LOW_PWM_MOVEMENT. */
+        /*
+         * joint_speed should always be greater than LOW_PWM_MOVEMENT,
+         * UNLESS the desired joint speed is 0.
+         */
 
         if (velocity_debug) {
             Serial.print(" pwm_range_scale ");
@@ -262,7 +273,7 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
             Serial.print(") > 100!\n");
             joint_speed = 100;
         }
-        if (joint_speed < LOW_PWM_MOVEMENT(valve)) {
+        if ((joint_speed != 0) && (joint_speed < LOW_PWM_MOVEMENT(valve))) {
             Serial.print("\nERROR: Valve ");
             Serial.print(valve);
             Serial.print(" joint_speed (");
