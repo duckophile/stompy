@@ -44,7 +44,7 @@
 #define THIGH_CYL_STROKE	14
 #define KNEE_CYL_STROKE		12
 
-uint32_t cylinder_stroke[3] = {8, 14, 12}; /* Travel of each cylinder, in inches. */
+uint32_t cylinder_stroke[3] = {7, 14, 12}; /* Travel of each cylinder, in inches. */
 /* Maybe these speeds should be stored in flash? */
 uint32_t cylinder_speeds[6] = {0, 0, 0, 0, 0, 0}; /* Speed of each side of each cylinder, in inches/sec. */
 uint32_t cylinder_inch_conv[3] = {0, 0, 0}; /* Multiplier to convert inches to sensor units. */
