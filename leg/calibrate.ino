@@ -892,6 +892,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     int high_sensor_decel, low_sensor_decel;
     int last_sensor;
     int old_pwm_scale;
+    int old_int_state;
     uint32_t this_time, last_time;
 
     pwms_off();
@@ -899,7 +900,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print("\n");
     run_count++;
 
-    disable_interrupts();
+    old_int_state = set_interrupt_state(0);
 
     old_pwm_scale = set_pwm_scale(100);
     enable_leg();
@@ -1040,7 +1041,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 decel:
     last_sensor = read_sensor(joint);
     /* Decelerate - 1%/X ms.  Move until joint stops moving. */
-    for (i = 0;i < 2000;i++) {
+    for (i = 0;i < 1000;i++) {
         if (check_keypress()) {
             rc = -1;
             goto failed;
@@ -1109,6 +1110,8 @@ decel:
 failed:
     pwms_off();
     set_pwm_scale(old_pwm_scale);
+    reset_current_location();
+    set_interrupt_state(old_int_state);
 
     if (rc)
         return rc;
