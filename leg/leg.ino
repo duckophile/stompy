@@ -1449,7 +1449,7 @@ void setup(void)
 
     fixup_blank_flash_values();
 
-    test_kinematics(                 512,                    512,                   512);
+    test_kinematics(      ANALOG_MAX / 2,         ANALOG_MAX / 2,        ANALOG_MAX / 2);
     test_kinematics( SENSOR_LOW(HIP) + 1,  SENSOR_LOW(THIGH) + 1,  SENSOR_LOW(KNEE) + 1);
     test_kinematics(SENSOR_HIGH(HIP) - 1, SENSOR_HIGH(THIGH) - 1, SENSOR_HIGH(KNEE) - 1);
 
