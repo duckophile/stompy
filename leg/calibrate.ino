@@ -28,15 +28,6 @@
  *
  */
 
-/*
-Done with calibration.
-
-Low sensor readings:    hip     86      thigh   27      knee    818
-High sensor readings:   hip     728     thigh   224     knee    945
-
-This gives a range of 642 on the hip.
-
-*/
 
 #warning I need convert units to inches/sec of foot travel!
 /*
@@ -886,6 +877,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 {
     static int run_count = 0;
     int sensor_reading;
+    int rc = 0;
     int i;
     int current_pwm;
     int valve;
@@ -898,7 +890,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     int total_millis;
     int total_sensor;
     int high_sensor_decel, low_sensor_decel;
-    int sensor_high_end, sensor_low_end;
+    int last_sensor;
     int old_pwm_scale;
     uint32_t this_time, last_time;
 
@@ -936,8 +928,6 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
     high_sensor_decel = SENSOR_HIGH(joint) - 2400; /* When to start decelerating. */
     low_sensor_decel  = SENSOR_LOW(joint)  + 2400; /* When to start decelerating. */
-    sensor_high_end   = SENSOR_HIGH(joint) - 600;  /* close enough to the end of travel. */
-    sensor_low_end    = SENSOR_LOW(joint)  + 600;
 
     /* XXX fixme:  This should only be printed if verbose. */
     Serial.print("# Measuring speed of ");
@@ -989,7 +979,8 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
             Serial.print("# Prematurely reached end of travel at sensor reading ");
             Serial.print(sensor_reading);
             Serial.print('\n');
-            goto failed;
+            rc = -1;
+            goto decel;
         }
     }
 
@@ -1015,8 +1006,10 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
 
     /* Running at full speed. */
     while (1) {
-        if (check_keypress())
+        if (check_keypress()) {
+            rc = -1;
             goto failed;
+        }
 
 #if 0
         /* Frobulate the PWM value every X milliseconds. */
@@ -1044,18 +1037,14 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print(sensor_reading);
     Serial.print("...\n");
 
-#if 1
-    Serial.print("Looking for ");
-    Serial.print(direction == IN ? "low" : "high");
-    Serial.print(" end of ");
-    Serial.print(direction == IN ? low_sensor_decel : high_sensor_decel);
-    Serial.print('\n');
-#endif
-
-    /* Decelerate - 1%/ms. */
-    for (i = 0;i < 30000;i++) {
-        if (check_keypress())
+decel:
+    last_sensor = read_sensor(joint);
+    /* Decelerate - 1%/X ms.  Move until joint stops moving. */
+    for (i = 0;i < 2000;i++) {
+        if (check_keypress()) {
+            rc = -1;
             goto failed;
+        }
 
         if (current_pwm > low_pwm)
             current_pwm--;
@@ -1068,12 +1057,11 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         last_time = this_time;
 
         sensor_reading = read_sensor(joint);
-        /* Check to see if we're close enough to the end of travel. */
-        if (((direction == IN)  && (sensor_reading < (sensor_low_end + 300))) ||
-            ((direction == OUT) && (sensor_reading > (sensor_high_end - 300)))) {
-            /* Hit the end of travel. */
-            Serial.print("Hit end of travel.\n");
-            break;
+        /* Check to see if the joint is still moving. */
+        if (((direction == IN)  && (sensor_reading < last_sensor)) ||
+            ((direction == OUT) && (sensor_reading > last_sensor))) {
+            last_sensor = sensor_reading;
+            i = 0;
         }
     }
 
@@ -1118,13 +1106,14 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
         Serial.print("\n\n");
     }
 
-    return speed;
-
 failed:
     pwms_off();
     set_pwm_scale(old_pwm_scale);
 
-    return -1;
+    if (rc)
+        return rc;
+    else
+        return speed;
 }
 
 /*
@@ -1323,7 +1312,6 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
             }
         }
         Serial.print("\n");
-        delay(100); /* XXX remove me */
         if (n == 0) {
             Serial.print(" ");
             Serial.print(sensor_val);

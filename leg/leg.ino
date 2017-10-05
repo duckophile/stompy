@@ -186,6 +186,44 @@ char *cmd_ptr;
 int max_sensor_seen[NR_SENSORS];
 int min_sensor_seen[NR_SENSORS] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
 
+char *read_string(void)
+{
+    char *string;
+
+    while (*cmd_ptr == ' ')
+        cmd_ptr++;
+    string = cmd_ptr;
+    if (*string == 0)
+        string = NULL;
+    while ((*cmd_ptr != ' ') && (*cmd_ptr != 0))
+        cmd_ptr++;
+    *(cmd_ptr++) = 0;
+
+    return string;
+}
+
+int read_int(void)
+{
+    int n;
+    char *p;
+
+    n = strtol(cmd_ptr, &p, 0);
+    cmd_ptr = p;
+
+    return n;
+}
+
+double read_double(void)
+{
+    double f;
+    char *p;
+
+    f = strtof(cmd_ptr, &p);
+    cmd_ptr = p;
+
+    return f;
+}
+
 /*
  * Take three threadings and return the middle one.  This should
  * remove some sensor jitter.
@@ -271,7 +309,6 @@ int func_pwm(void)
 
     return 0;
 }
-
 
 /* Set PWM frequency. */
 int func_freq(void)
@@ -730,6 +767,63 @@ int func_reset(void)
     return 0;
 }
 
+#define STEST_SIZE 16384
+
+int func_stest(void)
+{
+    uint16_t readings[STEST_SIZE];
+    int start_time, stop_time;
+    int sensor_high;
+    int sensor_low;
+    int total;
+    int sensor;
+    int averaging;
+    int n;
+
+    for (averaging = 0;averaging < 6;averaging++) {
+        Serial.print("\nAvering: ");
+        Serial.print(1 << averaging);
+        Serial.print('\n');
+
+        analogReadAveraging(1 << averaging);
+
+        for (sensor = 0;sensor < NR_SENSORS;sensor++) {
+            sensor_high = 0;
+            sensor_low = 1 << 30;
+            total = 0;
+
+            start_time = micros();
+            for (n = 0;n < STEST_SIZE;n++)
+                readings[n] = analogRead(sensorPin[sensor]);
+            stop_time = micros();
+
+            for (n = 0;n < STEST_SIZE;n++) {
+                if (readings[n] > sensor_high)
+                    sensor_high = readings[n];
+                if (readings[n] < sensor_low)
+                    sensor_low = readings[n];
+                total += readings[n];
+            }
+            Serial.print(joint_names[sensor]);
+            Serial.print("\tHigh: ");
+            Serial.print(sensor_high);
+            Serial.print("\tLow: ");
+            Serial.print(sensor_low);
+            Serial.print("\tDiff: ");
+            Serial.print(sensor_high - sensor_low);
+            Serial.print("\tAverage: ");
+            Serial.print(total / 16384);
+            Serial.print("\tRead time: ");
+            Serial.print((float)(stop_time - start_time) / (float)STEST_SIZE);
+            Serial.print('\n');
+        }
+    }
+
+    Serial.print('\n');
+
+    return 0;
+}
+
 /*
  * Show sensor jitter.
  *
@@ -934,7 +1028,6 @@ int func_foo(void)
     return 0;
 }
 
-
 int park_leg(void)
 {
     int old_int_state;
@@ -1038,6 +1131,49 @@ int func_speed(void)
     return 0;
 }
 
+int func_move_joint(int joint)
+{
+    char *direction;
+    int pwm_percent;
+    int dir;
+
+    direction = read_string();
+    pwm_percent = read_int();
+
+    if ((direction == NULL) || (pwm_percent == 0)) {
+        Serial.print("ERROR: Missing arguemnts.\n");
+        return -1;
+    }
+
+    if (!strcasecmp(direction, "in"))
+        dir = IN;
+    else if (!strcasecmp(direction, "out"))
+        dir = OUT;
+    else {
+        Serial.print("ERROR: Invalid direction.\n");
+        return -1;
+    }
+
+    measure_speed(joint, dir, pwm_percent, 0);
+
+    return 0;
+}
+
+int func_knee(void)
+{
+    return func_move_joint(KNEE);
+}
+
+int func_hip(void)
+{
+    return func_move_joint(HIP);
+}
+
+int func_thigh(void)
+{
+    return func_move_joint(THIGH);
+}
+
 int func_pid(void)
 {
 #if 0
@@ -1069,6 +1205,7 @@ struct {
     { "freq",       func_none      }, /* Set PWM frequency. */
     { "go",         func_go        }, /* goto given x, y, z. */
     { "help",       func_help      },
+    { "hip",        func_hip,      }, /* Move the hip. */
     { "hipcal",     func_hipcal    }, /* Run hip calibration. */
     { "home",       func_none      }, /* Some neutral position?  Standing positioon maybe? */
     { "info",       func_info      },
@@ -1076,6 +1213,7 @@ struct {
     { "joystick",   func_joystick  }, /* Enable jpoystick joint control mode. */
     { "joyxyz",     func_joyxyz    }, /* Enable jpoystick positional mode. */
     { "jtest",      func_jtest     }, /* Print joystick values for calibration. */
+    { "knee",       func_knee,     }, /* Move the knee. */
     { "kneecal",    func_kneecal   }, /* Run knee calibration. */
     { "leginfo",    func_leginfo   }, /* Print leg paramters stored in memory. */
     { "legnum",     func_legnum    }, /* Set the leg number. */
@@ -1089,34 +1227,14 @@ struct {
     { "sensors",    func_sensors   }, /* Continuously read and print sensor readings. */
     { "setloc",     func_setloc    }, /* Set the current location as the goal. */
     { "speed",      func_speed     }, /* Do speed test. */
+    { "stest",      func_stest     }, /* Another sensor test. */
     { "stop",       func_stop      }, /* Stop moving. */
+    { "thigh",      func_thigh     }, /* Move the thigh all the way. */
     { "thighcal",   func_thighcal  }, /* Run thigh calibration. */
     { "timing",     func_timing    }, /* Collect timing info. */
     { "where",      func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,         NULL           }
 };
-
-int read_int(void)
-{
-    int n;
-    char *p;
-
-    n = strtol(cmd_ptr, &p, 0);
-    cmd_ptr = p;
-
-    return n;
-}
-
-double read_double(void)
-{
-    double f;
-    char *p;
-
-    f = strtof(cmd_ptr, &p);
-    cmd_ptr = p;
-
-    return f;
-}
 
 void read_cmd(void)
 {

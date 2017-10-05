@@ -13,14 +13,34 @@
 /*
  * Cylinders:
  *
- * Knee: Dalton DBH-2512-WT 2.5" bore, 1.5" rod, 12" travel, 20" retracted length
- *
+ * Knee:  Dalton DBH-2512-WT 2.5" bore, 1.50" rod, 12" travel, 20" retracted length
  * Thigh: Dalton DBH-3514-WT 3.5" bore, 1.75" rod, 14" travel, 24" retracted length
+ * Hip:   Dalton DBH-2008-WT 2.0" bore, 1.25" rod,  8" travel, 16" retracted length
  *
- * Hip: Dalton DBH-2008-WT 2" bore, 1.25" rod, 8" travel, 16" retracted length
+ * String pots:
+ * Thigh, knee:  JX-PA-15-N12-14S-132
+ * Hip:          JX-PA-10-N12-14S-132
+ *
+ * Right front real travel:
+ * HIP:   7.081"
+ * KNEE: 11.970"
+ *
+ # Sensor        Low     High    Travel
+ # hip           5580    46517   40937 = 5781/inch
+ # thigh         2006    38193   36187 = 2584/inch (wrong!)
+ # knee          3056    53285   50229 = 4196/inch
+ *
+ *
+ * case HIP:
+ * pwm_percent = (joint_speed + 290) / 7.2;	HIP OUT
+ * case KNEE:
+ * pwm_percent = (joint_speed + 210) / 7.1;	KNEE OUT.
+ * case THIGH:
+ * pwm_percent = (joint_speed + 105) / 4.0;	THIGH OUT.
  */
 
-#define HIP_CYL_STROKE		8
+/*#define HIP_CYL_STROKE		8*/
+#define HIP_CYL_STROKE		7	/* The hip is limited to 7" of stroke. */
 #define THIGH_CYL_STROKE	14
 #define KNEE_CYL_STROKE		12
 
@@ -92,46 +112,57 @@ int velocity_init(void)
  *
  * XXX fixme: The speed should be different for each direction.
  */
-void set_joint_speed(uint32_t valve, uint32_t joint_speed)
+int set_joint_speed(uint32_t valve, uint32_t joint_speed)
 {
-    int pwm_percent = 0;
-    int joint;
+    uint32_t n;
+    uint32_t pwm_offset;
+    uint32_t pwm_percent;
+    float scale;
+    float diff;
+    float offset;
 
-    joint = valve;
-    if (joint > 3)
-        joint -= 3;
-
-    switch(joint) {
-    case HIP:
-        pwm_percent = (joint_speed + 290) / 7.2;	/* Base on HIP OUT. */
-        break;
-    case KNEE:
-        pwm_percent = (joint_speed + 210) / 7.1;	/* Base on KNEE OUT. */
-        break;
-    case THIGH:
-        pwm_percent = (joint_speed + 105) / 4.0;	/* Base on THIGH OUT. */
-        break;
+    for (n = 0;n <= 10;n++) {
+        if ((leg_info.valves[valve].joint_speed[n    ] <= joint_speed) &&
+            (leg_info.valves[valve].joint_speed[n + 1] >= joint_speed)) {
+            break;
+        }
     }
 
-    pwm_percent /= 64; /* XXX fixme:  Scale from 10 bit coefficients above to 16 bits. */
-
-    if (velocity_debug) {
-        Serial.print(" input speed (sensor/sec): ");
+    if (n == 11) {
+        Serial.print("ERROR: Valve ");
+        Serial.print(valve);
+        Serial.print(" cannot give speed ");
         Serial.print(joint_speed);
-        Serial.print(", pwm_percent: ");
-        Serial.print(pwm_percent);
         Serial.print('\n');
+        return -1;
     }
 
-    /*
-#warning Hardwired 50% PWM!
-    pwm_percent = 50;
-    Serial.print("PWM hardwired to 50%!\n");
-    */
+    /* The speed difference in this 10% window of PWM. */
+    diff = leg_info.valves[valve].joint_speed[n + 1] -
+           leg_info.valves[valve].joint_speed[n];
+    /* Where our desired speed falls in that window. */
+    offset = joint_speed - leg_info.valves[valve].joint_speed[n];
+    scale = diff / offset;
+    pwm_offset = (uint32_t)(10.0 * scale);
+    pwm_percent = (n * 10) + pwm_offset;
+
+    Serial.print("# Setting PWM for Valve ");
+    Serial.print(valve);
+    Serial.print(" speed ");
+    Serial.print(joint_speed);
+    Serial.print(", which falls in window ");
+    Serial.print(leg_info.valves[valve].joint_speed[n]);
+    Serial.print("-");
+    Serial.print(leg_info.valves[valve].joint_speed[n + 1]);
+    Serial.print(", scale = ");
+    Serial.print(scale);
+    Serial.print(", final percent = ");
+    Serial.print(pwm_percent);
+    Serial.print("\n");
 
     set_scaled_pwm_goal(valve, pwm_percent);
 
-    return;
+    return 0;
 }
 
 /*
@@ -705,10 +736,6 @@ void do_joystick_xyz(void)
 
 - Calculate three distances in sensor units - one for each axis?
 
-
-
-
-
 </todo>
 
 - Turn joint speeds into PWM values.
@@ -716,7 +743,6 @@ void do_joystick_xyz(void)
 - Write values to PWMs.
 
  */
-
 
 /*
  * The sensor readings are stored in current_sensor[].
@@ -832,11 +858,15 @@ void velocity_loop(void)
      * the leg doesn't decelerate at waypoints when it's following a
      * list of waypoints.
      */
-#if 0 /* Don't confuse things for now. */
-    if (distance < 4) {
-        double speed_scale;
+#if 1
+    if (distance < 4.0) {
+        double _speed_scale;
 
-        /* distance = 4-0 */
+        /*
+         * Decelerate by 25% for every inch under 4 as the goal nears.
+         * The main purpose of this is to avoid oscillation when the
+         * leg tries to stop.
+         */
         _speed_scale = (distance * 25.0) / 100.0;
         leg_speed = (int)((double)leg_speed * _speed_scale);
         if (velocity_debug) {
@@ -850,15 +880,34 @@ void velocity_loop(void)
 #endif
 
     /* Write the PWMs to make the leg move. */
-    if (distance < 1.0) /* We're there! */ {
+    /*
+     * If we're withing 0.5 inches of the goal then it's close enough.
+     */
+    if (distance < 0.75) {
+        /*
+         * XXX fixme: If there is a list of waypoints queued then go
+         * to the next one.
+         */
         if (!pwms_turned_off) {
             Serial.print("# Leg is close enough to goal, so turning PWMs off.\n");
             pwms_off();
             pwms_turned_off = 1;
         }
     } else {
-        set_velocity_pwms(leg_speed, speed_scale, joint_direction);
-        pwms_turned_off = 0;
+        /*
+         * If the PWMs are turned off then don't turn them back on
+         * unless the foot has strayed 1.0 inches.
+         */
+        if ((pwms_turned_off && distance > 1.0) ||
+            (!pwms_turned_off)) {
+            if (pwms_turned_off) {
+                Serial.print("Distance = ");
+                Serial.print(distance);
+                Serial.print(", so turning PWMs back on.\n");
+                pwms_turned_off = 0;
+            }
+            set_velocity_pwms(leg_speed, speed_scale, joint_direction);
+        }
     }
 
     debug_count++;
