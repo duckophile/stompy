@@ -1014,18 +1014,6 @@ int func_intoff(void)
     return 0;
 }
 
-int do_timing(int, int);
-
-int func_timing(void)
-{
-    int direction, pwm;
-
-    direction = read_int();
-    pwm = read_int();
-
-    return do_timing(direction, pwm);
-}
-
 /* Put random test stuff here. */
 int func_foo(void)
 {
@@ -1243,7 +1231,6 @@ struct {
     { "stop",       func_stop      }, /* Stop moving. */
     { "thigh",      func_thigh     }, /* Move the thigh all the way. */
     { "thighcal",   func_thighcal  }, /* Run thigh calibration. */
-    { "timing",     func_timing    }, /* Collect timing info. */
     { "where",      func_none      }, /* Print current x, y, z, and degrees. */
     { NULL,         NULL           }
 };
