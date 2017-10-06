@@ -8,9 +8,19 @@ void print_ftuple(double xyz[3]);
 int read_sensor(int joint);
 int park_leg(void);
 
+extern void erase_leg_info(void);
+extern void write_leg_info(leg_info_t *li);
+extern void read_leg_info(leg_info_t *li);
+extern void print_leg_info(leg_info_t *li);
+
 void reset_current_location(void);
 
 extern int sensorPin[NR_SENSORS];
+extern volatile int old_debug_flag;
+extern volatile int periodic_debug_flag;
+extern volatile int leg_enabled;
+extern int max_sensor_seen[NR_SENSORS];
+extern int min_sensor_seen[NR_SENSORS];
 
 /* leg link lengths hip, thigh, and knee */
 #define L1		11
