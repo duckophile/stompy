@@ -1,6 +1,9 @@
 #ifndef _LEG_INFO_
 #define _LEG_INFO_
 
+#include <stdint.h>
+#include "pins.h"
+
 /*
  * I may also want to store something about temperature compensation.
  * Maybe sensor jitter too?
@@ -105,5 +108,12 @@ extern const char *direction_names[];
 extern const char *joint_names[];
 extern const char *joint_up_actions[];
 extern const char *joint_down_actions[];
+
+/* This doesn't really belong here. */
+#define ANALOG_BITS	16
+#define PWM_BITS	ANALOG_BITS
+#define PWM_MAX		((1 << PWM_BITS) - 1)
+#define ANALOG_MAX	((1 << ANALOG_BITS) - 1)
+
 
 #endif /* _LEG_INFO_ */

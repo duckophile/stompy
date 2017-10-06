@@ -9,6 +9,7 @@
 #include "joystick.h"
 #include "leg.h"
 #include "kinematics.h"
+#include "velocity.h"
 
 #define VELOCITY_HZ	100
 

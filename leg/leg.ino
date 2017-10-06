@@ -4,8 +4,10 @@
 
 #include "pins.h"
 #include "leg-info.h"
+#include "globals.h"
 #include "pid.h"
 #include "velocity.h"
+#include "pwm.h"
 
 /*
  * Things I want to store in flash:
@@ -60,19 +62,12 @@
  *  degrees = (radians * 4068) / 71
  */
 
-#define ANALOG_BITS	16
-#define PWM_BITS	ANALOG_BITS
-#define PWM_MAX		((1 << PWM_BITS) - 1)
-#define ANALOG_MAX	((1 << ANALOG_BITS) - 1)
-
 volatile int leg_enabled = 0;
 volatile int interrupts_enabled = 0;
 
-volatile static int debug_flag = 0;  /* Enable verbose output. */
+volatile int debug_flag = 0;  /* Enable verbose output. */
 volatile static int old_debug_flag = 0;
 volatile static int periodic_debug_flag = 0;
-#define DEBUG   if(debug_flag)Serial.print
-#define DEBUGLN if(debug_flag)Serial.println
 
 #define ENABLED  1
 #define DISABLED 0
@@ -99,8 +94,6 @@ int current_sensor[NR_SENSORS];
 
 double xyz_goal[3];
 double angle_goals[3];
-
-int current_pwms[NR_VALVES] = { 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF};
 
 /*
  * Angles in degrees -
@@ -1665,25 +1658,6 @@ int check_deadman(void)
     }
 
     return deadMan;
-}
-
-static void thing(int n)
-{
-    static int done = 0;
-
-    if (joystick_mode == 1)
-        done = 0;
-
-    if (done)
-        return;
-    Serial.print(n);
-    Serial.print(" ");
-    Serial.print(joystick_mode);
-    Serial.print('\n');
-    if (joystick_mode == 0)
-        done = 1;
-
-    return;
 }
 
 #if 1

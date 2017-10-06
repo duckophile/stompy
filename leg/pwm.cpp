@@ -1,11 +1,19 @@
 /* ; -*- mode: C ;-*- */
 
+#include "Arduino.h"
+#include <stdint.h>
+#include "leg-info.h"
+#include "globals.h"
+#include "pwm.h"
+
 /*
  * Note that there are potential race conditions if calls are made
  * into this module while the interrupt-driven routine is running.
  */
 static int pwm_goals[6] = {0};
 static int pwm_scale = 60;
+
+int current_pwms[NR_VALVES] = { 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF};
 
 void set_pwm_freq(int freq)
 {
