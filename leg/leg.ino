@@ -11,6 +11,7 @@
 #include "calibrate.h"
 #include "leg.h"
 #include "kinematics.h"
+#include "interrupt.h"
 
 /*
  * Things I want to store in flash:
@@ -66,7 +67,6 @@
  */
 
 volatile int leg_enabled = 0;
-volatile int interrupts_enabled = 0;
 
 volatile int debug_flag = 0;  /* Enable verbose output. */
 volatile static int old_debug_flag = 0;
@@ -74,11 +74,6 @@ volatile static int periodic_debug_flag = 0;
 
 #define ENABLED  1
 #define DISABLED 0
-
-/* Timing info for the ISR loop. */
-uint32_t isr_max = 0;
-uint32_t isr_min = 1 << 31;
-uint32_t isr_count = 0;
 
 const char *direction_names[]    = {"OUT",     "ERROR1", "ERROR2",   "IN",     "ERROR3"};
 const char *joint_names[]        = {"hip",     "thigh",  "knee",     "calf"};
@@ -965,7 +960,7 @@ static int func_enable(void)
 
 static int func_intoff(void)
 {
-    disable_interrupts();
+    set_interrupt_state(0);
 
     Serial.print("OK - Interrupts disabled.\n");
 
@@ -1063,8 +1058,9 @@ static int func_speed(void)
     int joint = HIP;
     int rnd;
     int direction;
+    int old_int_state;
 
-    disable_interrupts();
+    old_int_state = set_interrupt_state(0);
 
     srand(millis());
 
@@ -1085,6 +1081,8 @@ static int func_speed(void)
 
         delay(400);
     }
+
+    set_interrupt_state(old_int_state);
 
     return 0;
 }

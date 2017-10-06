@@ -20,16 +20,21 @@ int joystick_pins[3] = {JOYSTICK_Y_PIN, JOYSTICK_X_PIN, JOYSTICK_Z_PIN};
  */
 int toggle_joystick_mode(void)
 {
+    int old_int_state;
+    int old_leg_state;
+
     joystick_mode = !joystick_mode;
 
     pwms_off(); /* Stop moving the leg. */
-    enable_leg();
-    disable_interrupts();
+    old_int_state = set_interrupt_state(0);
+    old_leg_state = set_leg_state(1);
     reset_current_location(); /* Current XYZ is new goal. */
 
     Serial.print("Joystick ");
     Serial.print(joystick_mode ? "enabled\n" : "disabled\n");
 
+    set_leg_state(old_leg_state);
+    set_interrupt_state(old_int_state);
     return 0;
 }
 

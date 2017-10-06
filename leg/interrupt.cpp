@@ -1,5 +1,18 @@
 /* ; -*- mode: C ;-*- */
 
+#include <stdint.h>
+#include <Arduino.h>
+#include "leg-info.h"
+#include "velocity.h"
+#include "pwm.h"
+
+volatile int interrupts_enabled = 0;
+
+/* Timing info for the ISR loop. */
+uint32_t isr_max = 0;
+uint32_t isr_min = 1 << 31;
+uint32_t isr_count = 0;
+
 #define TIE 0x2
 #define TEN 0x1
 
