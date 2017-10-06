@@ -58,7 +58,7 @@ double read_double(void)
 
 static int func_none(void)
 {
-    Serial.print("ERROR - Not implemented.\n");
+    Serial.print("ERROR:  Not implemented.\n");
 
     return 0;
 }
@@ -107,7 +107,7 @@ static int func_debug(void)
 	debug_flag = 0;
     else
 	debug_flag = -1; /* -1 = Permanently on. */
-    Serial.print("OK - Debug turned ");
+    Serial.print("OK:  Debug turned ");
     Serial.print(debug_flag ? "on\n" : "off\n");
 
     return 0;
@@ -249,7 +249,7 @@ static int func_deadman(void)
 
     deadman_forced = !deadman_forced;
 
-    Serial.print("Deadman ");
+    Serial.print("OK:  Deadman ");
     Serial.print(deadman_forced ? "disabled\n" : "enabled\n");
 
     if (deadman_forced) {
@@ -268,11 +268,11 @@ static int func_joystick(void)
 static int func_joyxyz(void)
 {
     if (joystick_mode == JOYSTICK_POSITION) {
-	Serial.print("OK - Joystick mode disabled.\n\n");
+	Serial.print("OK:  Joystick mode disabled.\n\n");
 	joystick_mode = JOYSTICK_OFF;
     } else {
 	joystick_mode = JOYSTICK_POSITION;
-	Serial.print("OK - Joystick positional mode enabled.\n\n");
+	Serial.print("OK:  Joystick positional mode enabled.\n\n");
 	enable_leg();
     }
 
@@ -303,7 +303,7 @@ static int func_saveflash(void)
 {
     write_leg_info(&leg_info);
 
-    Serial.print("OK - Leg parameters written to flash.\n\n");
+    Serial.print("OK:  Leg parameters written to flash.\n\n");
 
     return 0;
 }
@@ -312,7 +312,7 @@ static int func_eraseflash(void)
 {
     erase_leg_info();
 
-    Serial.print("OK - Flash parameters erased.\n\n");
+    Serial.print("OK:  Flash parameters erased.\n\n");
 
     return 0;
 }
@@ -529,7 +529,7 @@ static int func_findlimits(void)
 	joint = KNEE;
 
     if (joint == -1) {
-	Serial.print("ERROR - Please specify hip, thigh, or knee.\n");
+	Serial.print("ERROR:  Please specify hip, thigh, or knee.\n");
 	return -1;
     }
 
@@ -565,7 +565,7 @@ static int func_enable(void)
 {
     enable_leg();
 
-    Serial.print("OK - Leg enabled.\n");
+    Serial.print("OK:  Leg enabled.\n");
 
     return 0;
 }
@@ -574,7 +574,7 @@ static int func_intoff(void)
 {
     set_interrupt_state(0);
 
-    Serial.print("OK - Interrupts disabled.\n");
+    Serial.print("OK:  Interrupts disabled.\n");
 
     return 0;
 }
@@ -584,11 +584,11 @@ static int func_foo(void)
 {
     Serial.print("Extending knee (IN).\n");
     if (move_joint_all_the_way(KNEEPWM_IN, 50) == -1)
-	Serial.print("ERROR - couldn't extend knee!\n");
+	Serial.print("ERROR:  couldn't extend knee!\n");
     Serial.print("\n\n");
     Serial.print("Retracting knee (OUT).\n");
     if (move_joint_all_the_way(KNEEPWM_OUT, 50) == -1)
-	Serial.print("ERROR - couldn't retract knee!\n");
+	Serial.print("ERROR:  couldn't retract knee!\n");
 
     return 0;
 }
@@ -654,7 +654,7 @@ static int func_move_joint(int joint)
     pwm_percent = read_int();
 
     if ((direction == NULL) || (pwm_percent == 0)) {
-	Serial.print("ERROR: Missing arguemnts.\n");
+	Serial.print("ERROR:  Missing arguemnts.\n");
 	return -1;
     }
 
@@ -754,7 +754,7 @@ static int func_go(void)
      * populated at the same time as the other goals.
      */
     if (inverse_kin(xyz, sensor_goal, deg_goals) == -1) {
-	Serial.print("ERROR - invalid position.\n");
+	Serial.print("ERROR:  invalid position.\n");
     } else {
 
 	Serial.print("\n# New Goals: (x,y,z):\t");
@@ -846,6 +846,7 @@ void read_cmd(void)
 	if (leg_info.name[0] == 0xFF)
 	    Serial.print("bash$ ");
 	else {
+	    Serial.print(">");
 	    Serial.print(leg_info.name);
 	    Serial.print("> ");
 	}
@@ -859,15 +860,17 @@ void read_cmd(void)
 	ch = Serial.read();
 
 	if (ch == 0x3) { /* ^C */
+	    Serial.print('\n');
 	    disable_leg();
 	    continue;
 	}
 	if (ch == 22) { /* ^V */
-	    Serial.print("Toggling velocity debugging output.\n");
+	    Serial.print("\n# Toggling velocity debugging output.\n");
 	    toggle_velocity_debug();
 	    continue;
 	}
 	if (ch == 24) { /* ^X */
+	    Serial.print('\n');
 	    func_dbg();
 	    velocity_debug++;
 	    velocity_debug++;
@@ -925,7 +928,7 @@ void read_cmd(void)
     }
 
     if (!caught) {
-	Serial.print("ERROR - Unknown command ");
+	Serial.print("ERROR:  Unknown command ");
 	Serial.print(cmd_buf);
 	Serial.print('\n');
 

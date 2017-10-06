@@ -202,7 +202,7 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
         return;
 
     if (velocity_debug) {
-        Serial.print("Setting PWMs based on desired foot speed of ");
+        Serial.print("# Setting PWMs based on desired foot speed of ");
         Serial.print(foot_speed);
         Serial.print('\n');
     }
@@ -307,95 +307,6 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
     return;
 }
 
-#if 0
-void XXX_set_pwms(int foot_speed, double xyz_scale[], int directions[])
-{
-    int i;
-    int joint_speed;
-
-    if ((deadMan == 0) && (!deadman_forced))
-        return;
-
-    if (velocity_debug) {
-        Serial.print("Setting PWMs based on desired foot speed of ");
-        Serial.print(foot_speed);
-        Serial.print('\n');
-    }
-
-    for (i = 0; i < 3; i++) {
-        float pwm_range_scale;
-        int valve;
-
-        valve = i + directions[i];
-
-        joint_speed = (int)((float)foot_speed * xyz_scale[i]);
-
-        if (velocity_debug) {
-            Serial.print("Unscaled joint speed: ");
-            Serial.print(joint_speed);
-        }
-        /* joint_speed is now the foot_speed scaled down by xyz_scale[joint]. */
-
-        /*
-         * pwm_range_scale is a scaling factor to scale to the useful
-         * PWM range of this valve - only the range between
-         * LOW_PWM_MOVEMENT and 100% is useful.
-         */
-        pwm_range_scale = (100 - LOW_PWM_MOVEMENT(valve)) / 100.0;
-
-        /* Scale the desired speed into the range LOW_PWM_MOVEMENT...100. */
-        joint_speed = (int)((float)joint_speed * pwm_range_scale);
-        joint_speed += LOW_PWM_MOVEMENT(valve);
-
-        /* joint_speed should always be greater than LOW_PWM_MOVEMENT. */
-
-        if (velocity_debug) {
-            Serial.print(" joint ");
-            Serial.print(i);
-            Serial.print(" valve ");
-            Serial.print(valve);
-            Serial.print(" low_pwm ");
-            Serial.print(LOW_PWM_MOVEMENT(valve));
-            Serial.print(" xyz_scale ");
-            Serial.print(xyz_scale[i]);
-            Serial.print(" pwm_range_scale ");
-            Serial.print(pwm_range_scale);
-            Serial.print(" direction ");
-            Serial.print(directions[i]);
-            Serial.print(" joint speed ");
-            Serial.print(joint_speed);
-
-/*            Serial.print("set_pwm(): Joint %d, xyz_scale %d, direction %d, joint_speed %d\n",
-                   i, xyz_scale[i], directions[i], joint_speed); */
-        }
-
-        if (joint_speed > 100) {
-            Serial.print("ERROR: Valve ");
-            Serial.print(valve);
-            Serial.print(" joint_speed (");
-            Serial.print(joint_speed);
-            Serial.print(") > 100!\n");
-            joint_speed = 100;
-        }
-        if (joint_speed < LOW_PWM_MOVEMENT(valve)) {
-            Serial.print("ERROR: Valve ");
-            Serial.print(valve);
-            Serial.print(" joint_speed (");
-            Serial.print(joint_speed);
-            Serial.print(") is lower than lowest movement value (");
-            Serial.print(LOW_PWM_MOVEMENT(valve));
-            Serial.print(")\n");
-            joint_speed = LOW_PWM_MOVEMENT(valve);
-        }
-
-        /* Select PWM based on joint number and direction. */
-        set_joint_speed(valve, joint_speed); /* XXX NO!  This function takes sensor_units/sec! */
-    }
-
-    return;
-}
-#endif
-
 double calculate_distance(double current[], double goal[])
 {
     int i;
@@ -466,7 +377,7 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
             joint_direction[i] = IN; /* XXX I think the direction is correct. */
 
         if (velocity_debug) {
-            Serial.print("Sensor goal ");
+            Serial.print("# Sensor goal ");
             Serial.print(sensor_goal[i]);
             Serial.print("\tcompared to current\t");
             Serial.print(current_sensor[i]);
@@ -528,16 +439,16 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
     }
 
     if (velocity_debug) {
-        Serial.print("Largest delta = ");
+        Serial.print("# Largest delta = ");
         Serial.print(largest_delta);
         Serial.print('\n');
-        Serial.print("Sensor deltas from current to goal:\t");
+        Serial.print("# Sensor deltas from current to goal:\t");
         for (i = 0;i < 3; i++) {
             Serial.print(sensor_delta[i]);
             Serial.print("\t");
         }
         Serial.print("\n");
-        Serial.print("Scaling factor for each joint:      \t");
+        Serial.print("# Scaling factor for each joint:      \t");
         for (i = 0;i < 3; i++) {
             Serial.print(speed_scale[i]);
             Serial.print('\t');
@@ -547,76 +458,6 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
 
     return;
 }
-
-#if 0
-void XXX_calculate_deltas(double xyz_delta[], double xyz_scale[], int xyz_direction[])
-{
-    int i;
-    double largest_delta = 0;
-/*    static int loop_count = 0;*/
-
-    /* Calculate the deltas from where we are to where we want to be. */
-    for (i = 0;i < 3; i++) {
-        /* XXX FIXME:  I shouldn't move the joint if it's really close. */
-        if (xyz_goal[i] > current_xyz[i])
-            xyz_direction[i] = OUT;
-        else
-            xyz_direction[i] = IN; /* XXX fixme:  Is the direction correct? */
-
-        if (velocity_debug) {
-            Serial.print("Goal ");
-            Serial.print(xyz_goal[i]);
-            Serial.print(" compared to current ");
-            Serial.print(current_xyz[i]);
-            Serial.print(" so joint ");
-            Serial.print(i);
-            Serial.print(" goes ");
-            Serial.print(xyz_direction[i] == IN ? "IN" : "OUT");
-            Serial.print('\n');
-        }
-
-        xyz_delta[i] = abs(xyz_goal[i] - current_xyz[i]);
-        /* XXX Does this make sense when the deltas describe both directions? */
-        if (fabs(xyz_delta[i]) > largest_delta)
-            largest_delta = fabs(xyz_delta[i]);
-    }
-
-    /*
-     * Calculate scaling factors to normalize the x,y,z speeds to the
-     * longest axis.
-     *
-     * This gives percentage scaling factors to scale a speed
-     * appropriate for the longest axis to the two shorter axes.  For
-     * example, if the (x,y,z) travel is (9,6,3) inches then the
-     * scaling factors will be (1.0, 0.66, 0.33).
-     *
-     */
-    for (i = 0;i < 3;i++) {
-        if (largest_delta)
-            xyz_scale[i] = fabs(xyz_delta[i]) / largest_delta;
-        else
-            xyz_scale[i] = 0;
-    }
-
-    if (velocity_debug) {
-        Serial.print("XYZ deltas from current to goal: ");
-        for (i = 0;i < 3; i++) {
-            Serial.print(xyz_delta[i]);
-            Serial.print('\t');
-        }
-        Serial.print('\n');
-
-        Serial.print("XYZ scaling: ");
-        for (i = 0;i < 3;i++) {
-            Serial.print(xyz_scale[i]);
-            Serial.print('\t');
-        }
-        Serial.print('\n');
-    }
-
-    return;
-}
-#endif
 
 /* The joystick will move the leg at most 4 feet/sec. */
 #define JOYSTICK_SPEED_FPS	4
@@ -672,7 +513,7 @@ void do_joystick_xyz(void)
         movement = ((float)val * JOYSTICK_SPEED_FPS) / JOYSTICK_MID;
         if (velocity_debug) {
             Serial.print("FPS = ");
-            Serial.print( movement);
+            Serial.print(movement);
         }
 
         /* Turns FPS into feet per HZ */
@@ -795,7 +636,7 @@ void velocity_loop(void)
 
     if (velocity_debug) {
         Serial.print('\n');
-        Serial.print("\nSensors:\t");
+        Serial.print("\n# Sensors:\t");
         Serial.print(current_sensor[0]);
         Serial.print("\t");
         Serial.print(current_sensor[1]);
@@ -808,7 +649,7 @@ void velocity_loop(void)
     calculate_angles(current_sensor, current_deg, current_rad);
 
     if (velocity_debug) {
-        Serial.print("Current degrees: ");
+        Serial.print("# Current degrees: ");
         print_ftuple(current_deg);
         Serial.print("\n");
     }
@@ -817,7 +658,7 @@ void velocity_loop(void)
     calculate_xyz(current_xyz, current_rad);
 
     if (velocity_debug) {
-        Serial.print("XYZ: \t");
+        Serial.print("# XYZ: \t");
         print_ftuple(current_xyz);
         Serial.print("\n");
     }
@@ -845,7 +686,7 @@ void velocity_loop(void)
     }
 
     if (velocity_debug) {
-        Serial.print("3D distance to goal: ");
+        Serial.print("# 3D distance to goal: ");
         Serial.print(distance);
         Serial.print('\n');
     }
@@ -886,7 +727,7 @@ void velocity_loop(void)
         _speed_scale = (distance * 25.0) / 100.0;
         leg_speed = (int)((double)leg_speed * _speed_scale);
         if (velocity_debug) {
-            Serial.print("Close to goal, so decelerating - scaling speed by ");
+            Serial.print("# Close to goal, so decelerating - scaling speed by ");
             Serial.print(_speed_scale);
             Serial.print("%, leg_speed is now ");
             Serial.print(leg_speed);
@@ -905,9 +746,10 @@ void velocity_loop(void)
          * to the next one.
          */
         if (!pwms_turned_off) {
-            Serial.print("# Leg is close enough to goal, so turning PWMs off.\n");
+            Serial.print("\n# Leg is close enough to goal, so turning PWMs off.\n");
             pwms_off();
             pwms_turned_off = 1;
+            Serial.print("OK: Leg reached goal.\n");
         }
     } else {
         /*
@@ -917,7 +759,7 @@ void velocity_loop(void)
         if ((pwms_turned_off && distance > 1.0) ||
             (!pwms_turned_off)) {
             if (pwms_turned_off) {
-                Serial.print("Distance = ");
+                Serial.print("\n# Distance = ");
                 Serial.print(distance);
                 Serial.print(", so turning PWMs back on.\n");
                 pwms_turned_off = 0;

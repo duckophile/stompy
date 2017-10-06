@@ -285,7 +285,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
 
     if ((LOW_PWM_MOVEMENT(joint + direction) == 0) || (LOW_PWM_MOVEMENT(joint + direction) == 0)) {
         Serial.print("# ****************************************************************\n");
-        Serial.print("ERROR - LOW_PWM_MOVEMENT == ");
+        Serial.print("ERROR:  LOW_PWM_MOVEMENT == ");
         Serial.print(LOW_PWM_MOVEMENT(joint + direction));
         Serial.print('\n');
         Serial.print("# ****************************************************************\n");
@@ -565,9 +565,9 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
         Serial.print('\n');
 
         if (failed)
-            Serial.print("# ERROR **************** FAILED ****************\n");
+            Serial.print("ERROR:  **************** FAILED ****************\n");
         if (no_movement)
-            Serial.print("# ERROR **************** JOINT DID NOT MOVE ****************\n");
+            Serial.print("ERROR:  **************** JOINT DID NOT MOVE ****************\n");
     }
 
     Serial.print("----------------------------------------------------------------\n");
@@ -1325,7 +1325,7 @@ int set_joint_limits(int joint)
     pwms_off();
 
     if (!check_deadman()) {
-        Serial.print("ERROR: Deadman has leg disabled!\n");
+        Serial.print("ERROR:  Deadman has leg disabled!\n");
         return -1;
     }
 
@@ -1460,7 +1460,7 @@ int calibrate_joint(int joint, int rep_count)
     int old_int_state;
 
     if (!check_deadman()) {
-        Serial.print("ERROR - Deadman has leg disabled!\n");
+        Serial.print("ERROR:  Deadman has leg disabled!\n");
         return -1;
     }
 

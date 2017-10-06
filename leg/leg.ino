@@ -200,7 +200,7 @@ int park_leg(void)
     int old_leg_state;
     int speed;
 
-    Serial.print("\nParking leg.\n");
+    Serial.print("\n# Parking leg.\n");
 
     pwms_off();
     old_int_state = set_interrupt_state(0);
@@ -214,7 +214,7 @@ int park_leg(void)
     if (speed == 0xFFFF)
         speed = 50;
     if (move_joint_all_the_way(THIGHPWM_IN, speed) == -1)
-        Serial.print("ERROR - couldn't retract thigh!\n");
+        Serial.print("ERROR:  Couldn't retract thigh!\n");
     pwms_off();
 
     delay(100);
@@ -225,7 +225,7 @@ int park_leg(void)
     if (speed == 0xFFFF)
         speed = 50;
     if (move_joint_all_the_way(KNEEPWM_OUT, speed) == -1)
-        Serial.print("ERROR - couldn't retract knee!\n");
+        Serial.print("ERROR:  Couldn't retract knee!\n");
 
     /* Centering the hip would be better. */
     Serial.print("# Retracting hip.\n");
@@ -234,7 +234,7 @@ int park_leg(void)
     if (speed == 0xFFFF)
         speed = 50;
     if (move_joint_all_the_way(HIPPWM_IN, speed) == -1)
-        Serial.print("ERROR - couldn't retract HIP!\n");
+        Serial.print("ERROR:  Couldn't retract HIP!\n");
 
     pwms_off();
 
@@ -704,10 +704,10 @@ int check_deadman(void)
              * driver boards and write zero to PWM lines
              */
             disable_leg();
-            Serial.print("OK - Deadman on - leg disabled.\n");
+            Serial.print("OK:  Deadman on - leg disabled.\n");
         } else {
             enable_leg();
-            Serial.print("OK - Deadman disabled - leg enabled.\n");
+            Serial.print("OK:  Deadman disabled - leg enabled.\n");
         }
         deadMan = i;
     }

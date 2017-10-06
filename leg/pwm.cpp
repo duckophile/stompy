@@ -62,13 +62,13 @@ void set_pwm(int valve, int percent)
     int other_valve;
 
     if (percent > 100) {
-        Serial.print("\nERROR: PWM percent ");
+        Serial.print("\nERROR:  PWM percent ");
         Serial.print(percent);
         Serial.print(" is invalid.\n\n");
         return;
     }
     if ((valve > 5) || (valve < 0)) {
-        Serial.print("\nERROR: pwm_id ");
+        Serial.print("\nERROR:  pwm_id ");
         Serial.print(valve);
         Serial.print(" is invalid!\n\n");
         return;
@@ -158,7 +158,7 @@ void set_pwm_goal(int pwm_id, int value)
 */
 
     if (value > 100) {
-        Serial.print("ERROR PWM percentage ");
+        Serial.print("ERROR:  PWM percentage ");
         Serial.print(value);
         Serial.print(" is invalid for PWM ");
         Serial.print(pwm_id);
@@ -167,7 +167,7 @@ void set_pwm_goal(int pwm_id, int value)
     }
 
     if ((pwm_id > 5) || (pwm_id < 0)) {
-        Serial.print("ERROR: pwm_id ");
+        Serial.print("ERROR:  pwm_id ");
         Serial.print(pwm_id);
         Serial.print(" is invalid!\n");
         return;
