@@ -9,6 +9,8 @@
 #include "velocity.h"
 #include "pwm.h"
 #include "calibrate.h"
+#include "leg.h"
+#include "kinematics.h"
 
 /*
  * Things I want to store in flash:
@@ -129,18 +131,6 @@ int deadman_forced = 0; /* Ignore the deadman if this is set. */
     z = [L2 * sin(theta2)] + [L3 * sin(theta2 + theta3 - 180deg)]
 */
 
-/* leg link lengths hip, thigh, and knee */
-#define L1		11
-#define L2		54
-#define L3		72
-
-#define HIP_LEN		11	/* Hip pivot to thigh pivot, in inches. */
-#define THIGH_LEN	54	/* Thigh pivot to knee pivot, in inches. */
-#define KNEE_LEN	72	/* Knee pivot to ankle pivot, in inches. */
-
-#define X		0
-#define Y		1
-#define Z		2
 double current_xyz[3];
 
 leg_info_t leg_info;

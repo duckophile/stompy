@@ -1,6 +1,10 @@
 /* ; -*- mode: C ;-*- */
 
-#include "kinematics.h"
+#include <Arduino.h>
+#include <math.h>
+#include "leg-info.h"
+#include "leg.h"
+#include "globals.h"
 
 /*
  * Takes an X,Y,Z location and calculates the joint angles in degrees
