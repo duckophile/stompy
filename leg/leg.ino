@@ -5,6 +5,7 @@
 #include "pins.h"
 #include "leg-info.h"
 #include "pid.h"
+#include "velocity.h"
 
 /*
  * Things I want to store in flash:
@@ -64,8 +65,6 @@
 #define PWM_MAX		((1 << PWM_BITS) - 1)
 #define ANALOG_MAX	((1 << ANALOG_BITS) - 1)
 
-volatile int velocity_debug = 0;
-
 volatile int leg_enabled = 0;
 volatile int interrupts_enabled = 0;
 
@@ -82,32 +81,6 @@ volatile static int periodic_debug_flag = 0;
 uint32_t isr_max = 0;
 uint32_t isr_min = 1 << 31;
 uint32_t isr_count = 0;
-
-/* Joint/sensor numbers. */
-#define HIP			0
-#define THIGH			1
-#define KNEE			2
-#define CALF			3
-
-/* Valve numbers. */
-#define HIPPWM_OUT		0
-#define THIGHPWM_OUT		1
-#define KNEEPWM_OUT		2
-#define HIPPWM_IN		3
-#define THIGHPWM_IN		4
-#define KNEEPWM_IN		5
-
-const int pwm_pins[6]  = {HIPPWM_OUT_PIN,  THIGHPWM_OUT_PIN,  KNEEPWM_OUT_PIN,
-                          HIPPWM_IN_PIN,   THIGHPWM_IN_PIN,   KNEEPWM_IN_PIN};
-
-/*
-  * These are used to convert an 0-2 joint number to a valve number in
-  * the pwm_pins[] array.  pwm_pins[joint + OUT] is the valve pin to
-  * move a joint out, pwm_pins[jount + IN] is the valve pin to move
-  * the joint in.
-  */
-#define OUT	0      /* Sensor value decreasing. */
-#define IN	3      /* Sensor value increasing. */
 
 const char *direction_names[]    = {"OUT",     "ERROR1", "ERROR2",   "IN",     "ERROR3"};
 const char *joint_names[]        = {"hip",     "thigh",  "knee",     "calf"};
@@ -277,7 +250,7 @@ void print_ftuple(double xyz[3])
     return;
 }
 
-int func_none(void)
+static int func_none(void)
 {
     Serial.print("ERROR - Not implemented.\n");
 
@@ -285,7 +258,7 @@ int func_none(void)
 }
 
 /* Set PWM scaling factor. */
-int func_scale(void)
+static int func_scale(void)
 {
     int scale;
 
@@ -297,7 +270,7 @@ int func_scale(void)
 }
 
 /* Set PWM. */
-int func_pwm(void)
+static int func_pwm(void)
 {
     int pin;
     int regval;
@@ -311,7 +284,7 @@ int func_pwm(void)
 }
 
 /* Set PWM frequency. */
-int func_freq(void)
+static int func_freq(void)
 {
     int freq;
 
@@ -322,7 +295,7 @@ int func_freq(void)
     return 0;
 }
 
-int func_debug(void)
+static int func_debug(void)
 {
     if (debug_flag)
         debug_flag = 0;
@@ -334,7 +307,7 @@ int func_debug(void)
     return 0;
 }
 
-void dbg_n(int n)
+static void dbg_n(int n)
 {
     old_debug_flag = debug_flag;
     debug_flag = n;
@@ -342,7 +315,7 @@ void dbg_n(int n)
     return;
 }
 
-int func_dbg(void)
+static int func_dbg(void)
 {
     periodic_debug_flag = !periodic_debug_flag;
 
@@ -472,7 +445,7 @@ int func_info(void)
     return 0;
 }
 
-int func_deadman(void)
+static int func_deadman(void)
 {
     pwms_off();
 
@@ -489,12 +462,12 @@ int func_deadman(void)
     return 0;
 }
 
-int func_joystick(void)
+static int func_joystick(void)
 {
     return toggle_joystick_mode();
 }
 
-int func_joyxyz(void)
+static int func_joyxyz(void)
 {
     if (joystick_mode == JOYSTICK_POSITION) {
         Serial.print("OK - Joystick mode disabled.\n\n");
@@ -508,7 +481,7 @@ int func_joyxyz(void)
     return 0;
 }
 
-void print_leg_info(leg_info_t *li)
+static void print_leg_info(leg_info_t *li)
 {
     int i;
     int n;
@@ -600,7 +573,7 @@ void print_leg_info(leg_info_t *li)
  * Ideally there'd be something to prevent the use of empty flash, but
  * that'll have to come later.
  */
-void fixup_blank_flash_values(void)
+static void fixup_blank_flash_values(void)
 {
     int i;
 
@@ -678,7 +651,7 @@ void fixup_blank_flash_values(void)
 
 #define EEPROM_BASE 0x14000000
 
-void read_leg_info(leg_info_t *li)
+static void read_leg_info(leg_info_t *li)
 {
     memcpy(li, (void *)EEPROM_BASE, sizeof(leg_info_t));
 
@@ -695,7 +668,7 @@ void read_leg_info(leg_info_t *li)
     return;
 }
 
-void write_leg_info(leg_info_t *li)
+static void write_leg_info(leg_info_t *li)
 {
     uint n;
 
@@ -705,7 +678,7 @@ void write_leg_info(leg_info_t *li)
     return;
 }
 
-void erase_leg_info(void)
+static void erase_leg_info(void)
 {
     uint n;
 
@@ -715,7 +688,7 @@ void erase_leg_info(void)
     return;
 }
 
-int func_flashinfo(void)
+static int func_flashinfo(void)
 {
     leg_info_t li;
 
@@ -727,7 +700,7 @@ int func_flashinfo(void)
     return 0;
 }
 
-int func_leginfo(void)
+static int func_leginfo(void)
 {
     Serial.print("# Leg parameters in memory and maybe not yet in flash:\n");
     print_leg_info(&leg_info);
@@ -735,7 +708,7 @@ int func_leginfo(void)
     return 0;
 }
 
-int func_saveflash(void)
+static int func_saveflash(void)
 {
     write_leg_info(&leg_info);
 
@@ -744,7 +717,7 @@ int func_saveflash(void)
     return 0;
 }
 
-int func_eraseflash(void)
+static int func_eraseflash(void)
 {
     erase_leg_info();
 
@@ -753,7 +726,7 @@ int func_eraseflash(void)
     return 0;
 }
 
-int func_name(void)
+static int func_name(void)
 {
     strncpy(leg_info.name, cmd_ptr, 14);
 
@@ -761,7 +734,7 @@ int func_name(void)
 }
 
 /* Set the leg number. */
-int func_legnum(void)
+static int func_legnum(void)
 {
     leg_info.leg_number = read_int();
 
@@ -772,7 +745,7 @@ int func_legnum(void)
 #define CPU_RESTART_VAL 0x5FA0004
 #define CPU_RESTART (*CPU_RESTART_ADDR = CPU_RESTART_VAL)
 
-int func_reset(void)
+static int func_reset(void)
 {
     CPU_RESTART;
 
@@ -781,7 +754,7 @@ int func_reset(void)
 
 #define STEST_SIZE 16384
 
-int func_stest(void)
+static int func_stest(void)
 {
     uint16_t readings[STEST_SIZE];
     int start_time, stop_time;
@@ -843,7 +816,7 @@ int func_stest(void)
  * each value is read, and print a crude histogram(ish) of the values
  * seen.
  */
-int func_sensors(void)
+static int func_sensors(void)
 {
     int n;
     int i;
@@ -941,19 +914,19 @@ int func_sensors(void)
  * Stick the leg straight out and wiggle it up and down in hopes of
  * making it easier for air to get out.
  */
-int func_bleed(void)
+static int func_bleed(void)
 {
     return 0;
 }
 
-int func_stop(void)
+static int func_stop(void)
 {
     disable_leg();
 
     return 0;
 }
 
-int func_findlimits(void)
+static int func_findlimits(void)
 {
     int joint = -1;
 
@@ -972,7 +945,7 @@ int func_findlimits(void)
     return set_joint_limits(joint);
 }
 
-int func_hipcal(void)
+static int func_hipcal(void)
 {
     int count;
 
@@ -980,7 +953,7 @@ int func_hipcal(void)
     return calibrate_joint(HIP, count);
 }
 
-int func_kneecal(void)
+static int func_kneecal(void)
 {
     int count;
 
@@ -988,7 +961,7 @@ int func_kneecal(void)
     return calibrate_joint(KNEE, count);
 }
 
-int func_thighcal(void)
+static int func_thighcal(void)
 {
     int count;
 
@@ -996,7 +969,7 @@ int func_thighcal(void)
     return calibrate_joint(THIGH, count);
 }
 
-int func_enable(void)
+static int func_enable(void)
 {
     enable_leg();
 
@@ -1005,7 +978,7 @@ int func_enable(void)
     return 0;
 }
 
-int func_intoff(void)
+static int func_intoff(void)
 {
     disable_interrupts();
 
@@ -1015,7 +988,7 @@ int func_intoff(void)
 }
 
 /* Put random test stuff here. */
-int func_foo(void)
+static int func_foo(void)
 {
     Serial.print("Extending knee (IN).\n");
     if (move_joint_all_the_way(KNEEPWM_IN, 50) == -1)
@@ -1081,14 +1054,14 @@ int park_leg(void)
     return 0;
 }
 
-int func_park(void)
+static int func_park(void)
 {
     return park_leg();
 }
 
 int measure_speed(int joint, int direction, int pwm_goal, int verbose);
 
-int func_setloc(void)
+static int func_setloc(void)
 {
     reset_current_location();
 
@@ -1099,7 +1072,7 @@ int func_setloc(void)
  * A speed test.  Tries random PWM values within 32 of the lowest
  * joint movement PWM value and reports joint speed.
  */
-int func_speed(void)
+static int func_speed(void)
 {
     int pwm;
     int joint = HIP;
@@ -1131,7 +1104,7 @@ int func_speed(void)
     return 0;
 }
 
-int func_move_joint(int joint)
+static int func_move_joint(int joint)
 {
     char *direction;
     int pwm_percent;
@@ -1159,22 +1132,22 @@ int func_move_joint(int joint)
     return 0;
 }
 
-int func_knee(void)
+static int func_knee(void)
 {
     return func_move_joint(KNEE);
 }
 
-int func_hip(void)
+static int func_hip(void)
 {
     return func_move_joint(HIP);
 }
 
-int func_thigh(void)
+static int func_thigh(void)
 {
     return func_move_joint(THIGH);
 }
 
-int func_pid(void)
+static int func_pid(void)
 {
 #if 0
     Serial.print("\nOut...\n");
@@ -1186,7 +1159,71 @@ int func_pid(void)
     return 0;
 }
 
-int func_go(void);
+/*
+ * The 'go' command.
+ *
+ * Takes 3 doubles for (x,y,z) goal.
+ */
+static int func_go(void)
+{
+    int i;
+    double xyz[3];
+    double deg_goals[3];
+
+    /* XXX fixme:  I should make sure the interrupt thread doesn't run until this is done. */
+
+    velocity_debug += 2;
+
+    joystick_mode = 0;
+
+    Serial.print("\n# ----------------------------------------------------------------\n");
+
+    old_debug_flag = debug_flag;
+    debug_flag = 1;	/* Enable debugging for one loop. */
+
+    /* Read x,y,z from console, and update thetas if there's a new one. */
+    read_xyz(xyz);
+
+    /*
+     * inverse_kin() verifies the goals are in range and constrains
+     * them if they're not.
+     */
+    /*
+     * XXX fixme: This shouldn't fill sensor_goal yet, it should be
+     * populated at the same time as the other goals.
+     */
+    if (inverse_kin(xyz, sensor_goal, deg_goals) == -1) {
+        Serial.print("ERROR - invalid position.\n");
+    } else {
+
+        Serial.print("\n# New Goals: (x,y,z):\t");
+        print_ftuple(xyz);
+        Serial.print('\n');
+
+        Serial.print("# Goal angles (deg):    ");
+        for (i = 0;i < 3;i++) {
+            Serial.print('\t');
+            Serial.print(deg_goals[i]);
+        }
+        Serial.print('\n');
+
+        Serial.print("# Sensor goals:          ");
+        for (i = 0;i < 3;i++) {
+            Serial.print('\t');
+            Serial.print(sensor_goal[i]);
+        }
+        Serial.print('\n');
+
+        for (i = 0;i < 3;i++) {
+            xyz_goal[i] = xyz[i];
+            angle_goals[i] = deg_goals[i];
+        }
+    }
+
+    Serial.print("# ----------------------------------------------------------------\n\n");
+
+    return 0;
+}
 
 struct {
     const char *name;
@@ -1202,7 +1239,7 @@ struct {
     { "findlimits", func_findlimits}, /* Find the sensor limits for a joint. */
     { "flashinfo",  func_flashinfo }, /* Print leg parameters stored in flash. */
     { "foo",        func_foo       }, /* Whatever I want it to do. */
-    { "freq",       func_none      }, /* Set PWM frequency. */
+    { "freq",       func_freq      }, /* Set PWM frequency. */
     { "go",         func_go        }, /* goto given x, y, z. */
     { "help",       func_help      },
     { "hip",        func_hip,      }, /* Move the hip. */
@@ -1235,7 +1272,7 @@ struct {
     { NULL,         NULL           }
 };
 
-void read_cmd(void)
+static void read_cmd(void)
 {
     int n;
     int caught = 0;
@@ -1336,7 +1373,7 @@ void read_cmd(void)
     return;
 }
 
-int func_help(void)
+static int func_help(void)
 {
     for (int i = 0;cmd_table[i].name != NULL;i++) {
         Serial.print(cmd_table[i].name);
@@ -1475,7 +1512,8 @@ void setup(void)
     return;
 }
 
-void print_reading(int i, int sensor, int goal, const char *joint, const char *action)
+#if 0
+static void print_reading(int i, int sensor, int goal, const char *joint, const char *action)
 {
     Serial.print(i);
     Serial.print('\t');
@@ -1490,6 +1528,7 @@ void print_reading(int i, int sensor, int goal, const char *joint, const char *a
 
     return;
 }
+#endif
 
 /* Reads the current leg position sensors. */
 void read_sensors(int *sensors)
@@ -1511,11 +1550,12 @@ void read_sensors(int *sensors)
     return;
 }
 
+#if 0
 /*
  * Write the PWMs based on the last read sensor values and the
  * position goal.
  */
-void write_pwms(void)
+static void write_pwms(void)
 {
     static int dbg_msg = 0;
 
@@ -1574,8 +1614,9 @@ void write_pwms(void)
 
     return;
 }
+#endif
 
-int read_xyz(double *xyz)
+static int read_xyz(double *xyz)
 {
     // look for first valid integar to be x
     xyz[X] = read_double();
@@ -1626,7 +1667,7 @@ int check_deadman(void)
     return deadMan;
 }
 
-void thing(int n)
+static void thing(int n)
 {
     static int done = 0;
 
@@ -1794,72 +1835,6 @@ void loop(void)
     return;
 }
 #endif
-
-/*
- * The 'go' command.
- *
- * Takes 3 doubles for (x,y,z) goal.
- */
-int func_go(void)
-{
-    int i;
-    double xyz[3];
-    double deg_goals[3];
-
-    /* XXX fixme:  I should make sure the interrupt thread doesn't run until this is done. */
-
-    velocity_debug += 2;
-
-    joystick_mode = 0;
-
-    Serial.print("\n# ----------------------------------------------------------------\n");
-
-    old_debug_flag = debug_flag;
-    debug_flag = 1;	/* Enable debugging for one loop. */
-
-    /* Read x,y,z from console, and update thetas if there's a new one. */
-    read_xyz(xyz);
-
-    /*
-     * inverse_kin() verifies the goals are in range and constrains
-     * them if they're not.
-     */
-    /*
-     * XXX fixme: This shouldn't fill sensor_goal yet, it should be
-     * populated at the same time as the other goals.
-     */
-    if (inverse_kin(xyz, sensor_goal, deg_goals) == -1) {
-        Serial.print("ERROR - invalid position.\n");
-    } else {
-
-        Serial.print("\n# New Goals: (x,y,z):\t");
-        print_ftuple(xyz);
-        Serial.print('\n');
-
-        Serial.print("# Goal angles (deg):    ");
-        for (i = 0;i < 3;i++) {
-            Serial.print('\t');
-            Serial.print(deg_goals[i]);
-        }
-        Serial.print('\n');
-
-        Serial.print("# Sensor goals:          ");
-        for (i = 0;i < 3;i++) {
-            Serial.print('\t');
-            Serial.print(sensor_goal[i]);
-        }
-        Serial.print('\n');
-
-        for (i = 0;i < 3;i++) {
-            xyz_goal[i] = xyz[i];
-            angle_goals[i] = deg_goals[i];
-        }
-    }
-
-    Serial.print("# ----------------------------------------------------------------\n\n");
-
-    return 0;
-}
 
 /*
  * This makes sure the driver board is not enabled if the joystick is

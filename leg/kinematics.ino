@@ -1,5 +1,7 @@
 /* ; -*- mode: C ;-*- */
 
+#include "kinematics.h"
+
 /*
  * Takes an X,Y,Z location and calculates the joint angles in degrees
  * and radians that will give that location.

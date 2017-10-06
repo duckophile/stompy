@@ -1,5 +1,15 @@
 /* ; -*- mode: C ;-*- */
 
+#include "Arduino.h"
+#include <stdint.h>
+#include "pins.h"
+#include "leg-info.h"
+#include "pwm.h"
+#include "globals.h"
+#include "joystick.h"
+#include "leg.h"
+#include "kinematics.h"
+
 #define VELOCITY_HZ	100
 
 #define VELOCITY_DEBUG if(velocity_debug)Serial.print
@@ -40,16 +50,12 @@
  * pwm_percent = (joint_speed + 105) / 4.0;	THIGH OUT.
  */
 
-/*#define HIP_CYL_STROKE		8*/
-#define HIP_CYL_STROKE		7	/* The hip is limited to 7" of stroke. */
-#define THIGH_CYL_STROKE	14
-#define KNEE_CYL_STROKE		12
-
 uint32_t cylinder_stroke[3] = {7, 14, 12}; /* Travel of each cylinder, in inches. */
 /* Maybe these speeds should be stored in flash? */
 uint32_t cylinder_speeds[6] = {0, 0, 0, 0, 0, 0}; /* Speed of each side of each cylinder, in inches/sec. */
 uint32_t cylinder_inch_conv[3] = {0, 0, 0}; /* Multiplier to convert inches to sensor units. */
 
+volatile int velocity_debug = 0;
 int do_velocity_debug = 0;
 
 void toggle_velocity_debug(void)

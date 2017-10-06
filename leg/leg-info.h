@@ -52,6 +52,34 @@ typedef struct __attribute__((packed)) {
     uint8_t padding[3];
 } leg_info_t;
 
+/* Joint/sensor numbers. */
+#define HIP			0
+#define THIGH			1
+#define KNEE			2
+#define CALF			3
+
+/* Valve numbers. */
+#define HIPPWM_OUT		0
+#define THIGHPWM_OUT		1
+#define KNEEPWM_OUT		2
+#define HIPPWM_IN		3
+#define THIGHPWM_IN		4
+#define KNEEPWM_IN		5
+
+const int pwm_pins[6]  = {HIPPWM_OUT_PIN,  THIGHPWM_OUT_PIN,  KNEEPWM_OUT_PIN,
+                          HIPPWM_IN_PIN,   THIGHPWM_IN_PIN,   KNEEPWM_IN_PIN};
+
+/*
+  * These are used to convert an 0-2 joint number to a valve number in
+  * the pwm_pins[] array.  pwm_pins[joint + OUT] is the valve pin to
+  * move a joint out, pwm_pins[jount + IN] is the valve pin to move
+  * the joint in.
+  */
+#define OUT	0      /* Sensor value decreasing. */
+#define IN	3      /* Sensor value increasing. */
+
+extern leg_info_t leg_info;
+
 #define ANGLE_LOW(__joint)        leg_info.joint_angles[__joint].angle_low
 #define ANGLE_HIGH(__joint)       leg_info.joint_angles[__joint].angle_high
 
@@ -72,5 +100,10 @@ typedef struct __attribute__((packed)) {
 #define LOW_PWM_MOVEMENT(__valve)   leg_info.valves[__valve].low_joint_movement
 #define JOINT_SPEED(__valve, __pwm) leg_info.valves[__valve].joint_speed[__pwm]
 #define JOINT_MAX_SPEED(__valve)    JOINT_SPEED(__valve, 10)
+
+extern const char *direction_names[];
+extern const char *joint_names[];
+extern const char *joint_up_actions[];
+extern const char *joint_down_actions[];
 
 #endif /* _LEG_INFO_ */
