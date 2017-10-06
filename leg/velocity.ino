@@ -110,8 +110,6 @@ int velocity_init(void)
 /*
  * Takes a joint and a speed in sensor_units/sec and sets a PWM value
  * that should give that speed.
- *
- * XXX fixme: The speed should be different for each direction.
  */
 int set_joint_speed(uint32_t valve, uint32_t joint_speed)
 {

@@ -683,7 +683,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print("# Accelerating from sensor reading ");
     Serial.print(sensor_reading);
     Serial.print("...\n");
-#if 1
+#if 0
     Serial.print("Looking for ");
     Serial.print(direction == IN ? "low" : "high");
     Serial.print(" end of ");
@@ -723,7 +723,7 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
     Serial.print(sensor_reading);
     Serial.print(".\n");
 
-#if 1
+#if 0
     Serial.print("Looking for ");
     Serial.print(direction == IN ? "low" : "high");
     Serial.print(" end of ");
@@ -878,7 +878,7 @@ failed:
 int find_joint_first_movement(int joint, int direction, int pwm_val, int pwm_inc)
 {
     int valve;
-    int rc = 0;
+    int rc = -1;
     int start_sensor_val;
     int current_sensor_val;
     int sensor_diff;
@@ -895,15 +895,11 @@ int find_joint_first_movement(int joint, int direction, int pwm_val, int pwm_inc
 
     /* Try PWM values up to 70%. */
     for (;pwm_val <= 70;pwm_val += pwm_inc) {
-        if (!check_deadman()) {
-            pwms_off();
-            return -1;
-        }
+        if (!check_deadman())
+            goto failed;
 
-        if (check_keypress()) {
-            pwms_off();
-            return -1;
-        }
+        if (check_keypress())
+            goto failed;
 
         start_sensor_val = read_sensor(joint);
 
@@ -940,7 +936,6 @@ int find_joint_first_movement(int joint, int direction, int pwm_val, int pwm_inc
 
         delay(100);	/* No movement, so wait at 0% pwm for 100ms then try higher PWM. */
     }
-
     pwms_off();
 
     if (rc > 0) {
@@ -961,6 +956,10 @@ int find_joint_first_movement(int joint, int direction, int pwm_val, int pwm_inc
     }
 
     Serial.print("\n");
+
+failed:
+    pwms_off();
+    reset_current_location();
     return rc;
 }
 
@@ -1014,14 +1013,10 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     /* If there's no movement for N seconds then the joint must be at the end. */
     /* XXX fixme:  I should bail if the joint's moving very slow. */
     for (n = 0;n < 10;n++) {
-        if (!check_deadman()) {
-            pwms_off();
-            return -1;
-        }
-        if (check_keypress()) {
-            pwms_off();
-            return -1;
-        }
+        if (!check_deadman())
+            goto failed;
+        if (check_keypress())
+            goto failed;
 
         sensor_val = read_sensor(joint);
         Serial.print("semsor = ");
@@ -1071,12 +1066,11 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
         delay(100);	/* 100ms delay. */
     }
 
-    /* Stop joint. */
     pwms_off();
 
     Serial.print("\n");
 
-    delay(100);	/* 100ms delay. */
+    delay(100);
 
     Serial.print("# ");
     Serial.print(joint_names[joint]);
@@ -1087,7 +1081,7 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
     Serial.print(sensor_limit);
     Serial.print("\n\n");
 
-    delay(100);	/* 100ms delay. */
+    delay(100);
 
     if (direction == IN) {
         SENSOR_LOW(joint) = sensor_limit;
@@ -1103,7 +1097,12 @@ int find_joint_sensor_limit(int joint, int direction, int pwm_val)
 
     Serial.print("\nDone with limit discovery.\n");
 
+failed:
+    pwms_off();
+    reset_current_location();
+
     return rc;
+
 }
 
 /*
@@ -1143,7 +1142,6 @@ int find_joint_pwm_speeds(int joint, int count)
     direction = OUT;
 
     for (iternum = 0;iternum < count;iternum++) {
-
         if (direction == OUT)
             other_direction = IN;
         else
@@ -1214,6 +1212,9 @@ int find_joint_pwm_speeds(int joint, int count)
         }
     }
 
+    pwms_off();
+    reset_current_location();
+
     /*
      * Print out the results, average the results, and store it.
      */
@@ -1268,9 +1269,6 @@ int find_joint_pwm_speeds(int joint, int count)
  *
  * If the cylinder hasn't been de-aired then it (XXX which function?)
  * will prematurely detect stoppage at the gravity crossing.
- *
- * XXX fixme: If it's the thigh then it needs an artificial stop to keep
- * it from hitting the ground.
  */
 int find_joint_limits(int joint, int direction)
 {
