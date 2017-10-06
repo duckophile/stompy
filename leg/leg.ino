@@ -5,6 +5,7 @@
 #include "pins.h"
 #include "leg-info.h"
 #include "globals.h"
+#include "misc.h"
 #include "pid.h"
 #include "velocity.h"
 #include "pwm.h"
@@ -12,6 +13,7 @@
 #include "leg.h"
 #include "kinematics.h"
 #include "interrupt.h"
+#include "joystick.h"
 
 /*
  * Things I want to store in flash:
@@ -106,11 +108,6 @@ int sensorPin[NR_SENSORS] = {HIP_SENSOR_PIN, THIGH_SENSOR_PIN, KNEE_SENSOR_PIN, 
 // this is the distance in sensor reading that is close enough for directed movement
 // I am putting this here so we can avoid chasing our tails early in positional control
 int closeEnough = ((1 << PWM_BITS) / 512);
-
-#define JOYSTICK_OFF		0
-#define JOYSTICK_JOINT		1
-#define JOYSTICK_POSITION	2
-int joystick_mode = JOYSTICK_OFF;
 
 //Deadman button -- with the joystick I'll be using a momentary switch
 //on the panel.  It will need to be held down or jumpered to set the

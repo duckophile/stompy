@@ -5,6 +5,7 @@
 #include "leg-info.h"
 #include "leg.h"
 #include "globals.h"
+#include "misc.h"
 
 /*
  * Takes an X,Y,Z location and calculates the joint angles in degrees

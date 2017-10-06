@@ -3,6 +3,7 @@
 #include "Arduino.h"
 #include <stdint.h>
 #include "leg-info.h"
+#include "misc.h"
 #include "globals.h"
 #include "pwm.h"
 

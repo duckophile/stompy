@@ -1,5 +1,15 @@
 /* ; -*- mode: C ;-*- */
 
+#include "Arduino.h"
+#include "pins.h"
+#include "globals.h"
+#include "joystick.h"
+#include "pwm.h"
+#include "interrupt.h"
+#include "misc.h"
+#include "leg.h" /* XXX remove when reset_current_location() moves to kinematics.cpp. */
+
+int joystick_mode;
 int joystick_values[3] = {0, 0, 0};
 
 #define JOYSTICK_BITS	10
