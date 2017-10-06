@@ -1,5 +1,14 @@
 /* ; -*- mode: C ;-*- */
 
+#include <Arduino.h>
+#include "leg-info.h"
+#include "pwm.h"
+#include "leg.h"
+#include "pwm.h"
+#include "misc.h"
+#include "interrupt.h"
+#include "calibrate.h"
+
 /*
  * Objective:
  *
@@ -49,6 +58,31 @@ int check_keypress(void)
     }
 
     return 0;
+}
+
+void capped_pwm_write(int valve, int percent)
+{
+    int pwm_val;
+
+    pwm_val = (percent * PWM_MAX) / 100;
+    if (pwm_val > PWM_MAX)
+        pwm_val = PWM_MAX;
+    if (pwm_val < 0)
+        pwm_val = 0;
+
+    set_pwm(valve, percent);
+
+#if 0
+    Serial.print("Wrote ");
+    Serial.print(pwm_val);
+    Serial.print(" to valve ");
+    Serial.print(valve);
+    Serial.print(" pin ");
+    Serial.print(pwm_pins[valve]);
+    Serial.print("\n");
+#endif
+
+    return;
 }
 
 /*
@@ -563,31 +597,6 @@ fail:
     pwms_off();
     Serial.print("Failed.\n");
     return -1;
-}
-
-void capped_pwm_write(int valve, int percent)
-{
-    int pwm_val;
-
-    pwm_val = (percent * PWM_MAX) / 100;
-    if (pwm_val > PWM_MAX)
-        pwm_val = PWM_MAX;
-    if (pwm_val < 0)
-        pwm_val = 0;
-
-    set_pwm(valve, percent);
-
-#if 0
-    Serial.print("Wrote ");
-    Serial.print(pwm_val);
-    Serial.print(" to valve ");
-    Serial.print(valve);
-    Serial.print(" pin ");
-    Serial.print(pwm_pins[valve]);
-    Serial.print("\n");
-#endif
-
-    return;
 }
 
 /*
@@ -1311,6 +1320,7 @@ int set_joint_limits(int joint)
     int rc = -1;
     int direction = IN;
     int old_pwm_scale;
+    int old_int_state;
 
     pwms_off();
 
@@ -1319,7 +1329,7 @@ int set_joint_limits(int joint)
         return -1;
     }
 
-    disable_interrupts();
+    old_int_state = set_interrupt_state(0);
 
     old_pwm_scale = set_pwm_scale(100);
 
@@ -1428,6 +1438,7 @@ int set_joint_limits(int joint)
 
 fail:
     pwms_off();
+    set_interrupt_state(old_int_state);
     set_pwm_scale(old_pwm_scale);
     reset_current_location();
 

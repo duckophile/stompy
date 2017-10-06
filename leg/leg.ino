@@ -8,6 +8,7 @@
 #include "pid.h"
 #include "velocity.h"
 #include "pwm.h"
+#include "calibrate.h"
 
 /*
  * Things I want to store in flash:
@@ -959,6 +960,7 @@ static int func_thighcal(void)
     int count;
 
     count = read_int();
+
     return calibrate_joint(THIGH, count);
 }
 
@@ -1384,6 +1386,8 @@ static int func_help(void)
  * Reads the sensors and sets the x,y,z goal to the current location.
  *
  * XXX fixme:  This should use local variables.
+ *
+ * XXX fixme:  This should move to kinematics.
  */
 void reset_current_location(void)
 {
@@ -1814,7 +1818,7 @@ void loop(void)
  * This makes sure the driver board is not enabled if the joystick is
  * turned off (deadMan is low).
  */
-void disable_leg()
+void disable_leg(void)
 {
     leg_enabled = 0;
 
