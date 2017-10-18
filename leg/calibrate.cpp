@@ -267,7 +267,9 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
     int state = ACCELERATING;
     int no_change_count = 0;
     int last_sensor_reading;
+#if 0
     int real_last_sensor_reading;
+#endif
     int pwm_inc;
     int low_percent;
     int failed = 0;
@@ -325,6 +327,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
     valve = joint + direction;
 
     /* Sensor number is 0-2. */
+#if 0
     if (verbose) {
         if (direction == OUT) {
             Serial.print("# Sensor value should be increasing, looking for high value of ");
@@ -345,10 +348,13 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
         Serial.print(sensorPin[joint]);
         Serial.print('\n');
     }
+#endif
 
     sensor_reading = read_sensor(joint);
     last_sensor_reading = sensor_reading;
+#if 0
     real_last_sensor_reading = sensor_reading;
+#endif
     Serial.print("# Starting at sensor reading ");
     Serial.print(sensor_reading);
     Serial.print('\n');
@@ -399,20 +405,24 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
 
         /* Save min & max sensor values.  0xFFFF means blank flash. */
         if ((direction == IN) && sensor_reading < SENSOR_LOW(joint)) {
+#if 0
             Serial.print("**** Set SENSOR_LOW from ");
             Serial.print(SENSOR_LOW(joint));
             Serial.print(" to ");
             Serial.print(sensor_reading);
             Serial.print('\n');
+#endif
             SENSOR_LOW(joint) = sensor_reading;
         }
         if ((direction == OUT) &&
             ((sensor_reading > SENSOR_HIGH(joint)) || (SENSOR_HIGH(joint) == 0xFFFF))) {
+#if 0
             Serial.print("**** Set SENSOR_HIGH from ");
             Serial.print(SENSOR_HIGH(joint));
             Serial.print(" to ");
             Serial.print(sensor_reading);
             Serial.print('\n');
+#endif
             SENSOR_HIGH(joint) = sensor_reading;
         }
 
@@ -440,6 +450,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
         /* Check to see if we're close enough to the end of travel. */
         if (((direction == IN)  && (sensor_reading < sensor_low_end)) ||
             ((direction == OUT) && (sensor_reading > sensor_high_end))) {
+#if 0
             Serial.print("# Reached end of travel at sensor reading ");
             Serial.print(sensor_reading);
             Serial.print('\n');
@@ -451,6 +462,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
             Serial.print(" sensor = ");
             Serial.print(sensor_reading);
             Serial.print('\n');
+#endif
 
             break;
         }
@@ -497,6 +509,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
             break;
         }
 
+#if 0
         /* This is just debugging output. */
         if (verbose) {
             if ((i % 10) == 0) {
@@ -527,6 +540,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
                 real_last_sensor_reading = sensor_reading;
             }
         }
+#endif
 
         if (check_keypress()) {
             failed = 1;
@@ -545,6 +559,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
 
     /* I want sensor movement/sec */
 
+#if 0
     if (verbose) {
         Serial.print("# Done.\n");
 
@@ -570,6 +585,7 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
             Serial.print("ERROR:  **************** JOINT DID NOT MOVE ****************\n");
     }
 
+#endif
     Serial.print("----------------------------------------------------------------\n");
     Serial.print("# Done: ");
     if (failed) {
@@ -664,11 +680,13 @@ int measure_speed(int joint, int direction, int pwm_goal, int verbose)
      * on the difference between the desired PWM and LOW_PWM_MOVEMENT.
      * I don't think 30 is high enough for higher PWMs.
      */
+#if 0
     Serial.print("SENSOR_HIGH = ");
     Serial.print(SENSOR_HIGH(joint));
     Serial.print(" SENSOR_LOW = ");
     Serial.print(SENSOR_LOW(joint));
     Serial.print('\n');
+#endif
 
     high_sensor_decel = SENSOR_HIGH(joint) - 2400; /* When to start decelerating. */
     low_sensor_decel  = SENSOR_LOW(joint)  + 2400; /* When to start decelerating. */

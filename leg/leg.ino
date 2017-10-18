@@ -16,6 +16,7 @@
 #include "interrupt.h"
 #include "joystick.h"
 #include "cmd.h"
+#include "comm.h"
 
 /*
  * Things I want to store in flash:
@@ -133,6 +134,16 @@ leg_info_t leg_info;
 int max_sensor_seen[NR_SENSORS];
 int min_sensor_seen[NR_SENSORS] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
 
+#define TRIPLE_SENSOR_SAMPLE	0
+
+#define AVERAGE_SENSORS		0
+#if AVERAGE_SENSORS
+#define SENSOR_BUFFER_SIZE	10
+int sensor_buffer[NR_SENSORS][SENSOR_BUFFER_SIZE];
+int sensor_idxs[NR_SENSORS];
+int sensor_tally[NR_SENSORS];
+#endif /* AVERAGE_SENSORS */
+
 /*
  * Take three threadings and return the middle one.  This should
  * remove some sensor jitter.
@@ -141,9 +152,12 @@ int min_sensor_seen[NR_SENSORS] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
  */
 int read_sensor(int joint)
 {
-    int r1, r2, r3;
-    int pin;
+#if TRIPLE_SENSOR_SAMPLE
+    int r1, r3;
     int tmp;
+#endif
+    int r2;
+    int pin;
 
     if ((joint > NR_SENSORS) || (joint < 0)) {
         Serial.print("**************** JOINT OUT OF RANGE!\n");
@@ -152,6 +166,7 @@ int read_sensor(int joint)
 
     pin = sensorPin[joint];
 
+#if TRIPLE_SENSOR_SAMPLE
     r1 = analogRead(pin);
     r2 = analogRead(pin);
     r3 = analogRead(pin);
@@ -164,6 +179,29 @@ int read_sensor(int joint)
         SWAP(r1, r2);
     if (r3 < r2)
         SWAP(r2, r3);
+#else
+    r2 = analogRead(pin);
+#endif
+
+#if AVERAGE_SENSORS
+    /* One-time init. */
+    if (sensor_tally[joint] == 0) {
+        for (int i = 0;i < SENSOR_BUFFER_SIZE;i++) {
+            sensor_buffer[joint][i] = r2;
+            sensor_tally[joint] += r2;
+        }
+    }
+    /* Subtract the old value. */
+    sensor_tally[joint] -= sensor_buffer[joint][sensor_idxs[joint]];
+    /* Add the new value. */
+    sensor_tally[joint] += r2;
+    /* Save the new value. */
+    sensor_buffer[joint][sensor_idxs[joint]] = r2;
+    /* Go to next bucket. */
+    sensor_idxs[joint] = (sensor_idxs[joint] + 1) % SENSOR_BUFFER_SIZE;
+
+    r2 = sensor_tally[joint] / SENSOR_BUFFER_SIZE;
+#endif /* AVERAGE_SENSORS */
 
     if (r2 < min_sensor_seen[joint])
         min_sensor_seen[joint] = r2;
@@ -211,32 +249,28 @@ int park_leg(void)
     /* I should use a low speed PWM value if I have one. */
     Serial.print("# Retracting thigh.\n");
     speed = LOW_PWM_MOVEMENT(THIGHPWM_IN) + 5;
-    if (speed == 0xFFFF)
+    if (speed > 100)
         speed = 50;
-    if (move_joint_all_the_way(THIGHPWM_IN, speed) == -1)
-        Serial.print("ERROR:  Couldn't retract thigh!\n");
-    pwms_off();
+    measure_speed(THIGH, IN, speed, 0);
 
     delay(100);
 
     Serial.print("# Retracting knee.\n");
     /* Move knee up. */
     speed = LOW_PWM_MOVEMENT(KNEEPWM_OUT) + 5;
-    if (speed == 0xFFFF)
+    if (speed > 100)
         speed = 50;
-    if (move_joint_all_the_way(KNEEPWM_OUT, speed) == -1)
-        Serial.print("ERROR:  Couldn't retract knee!\n");
+    measure_speed(KNEE, OUT, speed, 0);
+
+    delay(100);
 
     /* Centering the hip would be better. */
     Serial.print("# Retracting hip.\n");
     /* Move hip back. */
     speed = LOW_PWM_MOVEMENT(HIPPWM_IN) + 5;
-    if (speed == 0xFFFF)
+    if (speed > 100)
         speed = 50;
-    if (move_joint_all_the_way(HIPPWM_IN, speed) == -1)
-        Serial.print("ERROR:  Couldn't retract HIP!\n");
-
-    pwms_off();
+    measure_speed(HIP, IN, speed, 0);
 
     /* Set the goal to wherever we are now. */
     reset_current_location();
@@ -544,8 +578,13 @@ void setup(void)
 
     fixup_blank_flash_values();
 
-    test_kinematics(      ANALOG_MAX / 2,         ANALOG_MAX / 2,        ANALOG_MAX / 2);
+    Serial.print("# Low-end test:");
     test_kinematics( SENSOR_LOW(HIP) + 1,  SENSOR_LOW(THIGH) + 1,  SENSOR_LOW(KNEE) + 1);
+    Serial.print("# Mid-point test:");
+    test_kinematics((SENSOR_LOW(HIP)   + SENSOR_HIGH(HIP))   / 2,
+                    (SENSOR_LOW(THIGH) + SENSOR_HIGH(THIGH)) / 2,
+                    (SENSOR_LOW(KNEE)  + SENSOR_HIGH(KNEE))  / 2);
+    Serial.print("# High-end test:");
     test_kinematics(SENSOR_HIGH(HIP) - 1, SENSOR_HIGH(THIGH) - 1, SENSOR_HIGH(KNEE) - 1);
 
 #if 0
@@ -876,6 +915,7 @@ void disable_leg(void)
     digitalWrite(ENABLE_PIN, LOW);
     digitalWrite(ENABLE_PIN_HIP, LOW);
     pwms_off();
+    cancel_point_list();
 
     Serial.print("\n# **************** Disabling leg. ****************\n\n");
 

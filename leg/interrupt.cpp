@@ -30,7 +30,6 @@ void pit0_isr(void)
 
     velocity_loop();
 
-    /* This is supposed to do acceleration, which is currently disabled. */
     adjust_pwms();
 
     end_time = micros();

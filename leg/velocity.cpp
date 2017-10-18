@@ -9,11 +9,16 @@
 #include "joystick.h"
 #include "leg.h"
 #include "kinematics.h"
+#include "interrupt.h"
 #include "velocity.h"
+#include "comm.h"
+#include "misc.h"
 
 #define VELOCITY_HZ	100
 
 #define VELOCITY_DEBUG if(velocity_debug)Serial.print
+
+uint8_t point_list_buf[1024];
 
 /*
  * TODO:
@@ -115,8 +120,68 @@ int velocity_init(void)
 }
 
 /*
+ * XXX fixme:  The speed needs to be hooked up.
+ */
+int set_xyz_goal(double xyz[3], int speed)
+{
+    int i;
+    double deg_goals[3];
+    int sense_goals[NR_SENSORS];
+    int old_int_state = -1;
+
+    (void)speed;
+
+    velocity_debug++;
+
+    Serial.print("\n# ----------------------------------------------------------------\n");
+
+    /*
+     * inverse_kin() verifies the goals are in range and constrains
+     * them if they're not.
+     */
+    if (inverse_kin(xyz, sense_goals, deg_goals))
+        return -1;
+
+    Serial.print("# New Goals: (x,y,z):\t");
+    print_ftuple(xyz);
+    Serial.print(" speed ");
+    Serial.print(speed);
+    Serial.print('\n');
+
+    Serial.print("# Goal angles (deg):    ");
+    for (i = 0;i < 3;i++) {
+        Serial.print('\t');
+        Serial.print(deg_goals[i]);
+    }
+    Serial.print('\n');
+
+    Serial.print("# Sensor goals:          ");
+    for (i = 0;i < 3;i++) {
+        Serial.print('\t');
+        Serial.print(sensor_goal[i]);
+    }
+    Serial.print('\n');
+
+    /* Disable interrupts so the velocity loop won't run until this is done. */
+    old_int_state = set_interrupt_state(0);
+    for (i = 0;i < 3;i++) {
+        xyz_goal[i] = xyz[i];
+        angle_goals[i] = deg_goals[i];
+        sensor_goal[i] = sense_goals[i];
+    }
+    set_interrupt_state(old_int_state);
+
+    Serial.print("# ----------------------------------------------------------------\n\n");
+
+    return 0;
+}
+
+/*
  * Takes a joint and a speed in sensor_units/sec and sets a PWM value
  * that should give that speed.
+ *
+ * XXX fixme: I think the table should contain inches/sec of foot
+ * movement.
  */
 int set_joint_speed(uint32_t valve, uint32_t joint_speed)
 {
@@ -140,6 +205,7 @@ int set_joint_speed(uint32_t valve, uint32_t joint_speed)
         Serial.print(" cannot give speed ");
         Serial.print(joint_speed);
         Serial.print('\n');
+        disable_leg();
         return -1;
     }
 
@@ -172,7 +238,8 @@ int set_joint_speed(uint32_t valve, uint32_t joint_speed)
     Serial.print("\n");
 #endif
 
-    set_scaled_pwm_goal(valve, pwm_percent);
+/*    set_scaled_pwm_goal(valve, pwm_percent); */
+    set_pwm_goal(valve, pwm_percent);
 
     return 0;
 }
@@ -632,8 +699,6 @@ void velocity_loop(void)
     /* Read the sensors. */
     read_sensors(current_sensor);
 
-#define DEBUG_VELOCITY	0
-
     if (velocity_debug) {
         Serial.print('\n');
         Serial.print("\n# Sensors:\t");
@@ -671,6 +736,9 @@ void velocity_loop(void)
     if (joystick_mode == JOYSTICK_POSITION)
         do_joystick_xyz();
 #endif
+
+redo:
+
     /*
      * The distance between the current XYZ and the goal XYZ will tell
      * if the foot is close enough, and can be used to decelerate as
@@ -681,7 +749,9 @@ void velocity_loop(void)
 
     /* Enable debugging output every time the foot moves an inch. */
     if ((last_distance - distance) > 1.0) {
+#if 0
         velocity_debug++;
+#endif
         last_distance = distance;
     }
 
@@ -704,8 +774,10 @@ void velocity_loop(void)
      * together, to allow acceleration when changing course when the
      * leg's already in motion.  Maybe that's the PIDs job.
      */
+    /* XXX fixme:  I should't calculate the speeds until I know I'll need them. */
     calculate_speeds(speed_scale, joint_direction);
 
+#if 0
     /*
      * If the foot is within 4 inches of its goal then scale the speed
      * down in proportion to the distance to the goal.  This is the
@@ -715,7 +787,6 @@ void velocity_loop(void)
      * the leg doesn't decelerate at waypoints when it's following a
      * list of waypoints.
      */
-#if 1
     if (distance < 4.0) {
         double _speed_scale;
 
@@ -737,14 +808,25 @@ void velocity_loop(void)
 #endif
 
     /* Write the PWMs to make the leg move. */
-    /*
-     * If we're withing 0.5 inches of the goal then it's close enough.
-     */
+
     if (distance < 0.75) {
         /*
          * XXX fixme: If there is a list of waypoints queued then go
-         * to the next one.
+         * to the next one and goto redo:.
          */
+        if (queued_point_count()) {
+            double next_xyz[3];
+            int speed;
+
+            Serial.print("\n# Leg is close enough to goal and points are queued: setting next goal.\n");
+            get_next_point(next_xyz, &speed, 0);
+            if (set_xyz_goal(next_xyz, speed)) {
+                cancel_point_list();
+                reset_current_location();
+            } else
+                goto redo;
+        }
+
         if (!pwms_turned_off) {
             Serial.print("\n# Leg is close enough to goal, so turning PWMs off.\n");
             pwms_off();

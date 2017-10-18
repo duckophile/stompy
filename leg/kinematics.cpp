@@ -58,7 +58,8 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print("constrained goal: ");
         Serial.print(hipGoal);
         Serial.print('\n');
-        rc = -1;
+        disable_leg();
+        return -1;
     }
 
     /* Thigh - theta2 */
@@ -108,7 +109,8 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print("constrained goal: ");
         Serial.print(thighGoal);
         Serial.print('\n');
-        rc = -1;
+        disable_leg();
+        return -1;
     }
 
     /* Knee - theta3 */
@@ -148,7 +150,8 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print("KNEE GOAL ");
         Serial.print(kneeGoal);
         Serial.print(" OUT OF RANGE!!\n");
-        rc = -1;
+        disable_leg();
+        return -1;
         // kneeGoal = constrain(kneeGoal, SENSOR_LOW(KNEE), SENSOR_HIGH(KNEE));
         // Serial.print("constrained goal: ");
     }
@@ -162,7 +165,8 @@ int inverse_kin(double *xyz, int *sense_goals, double *deg_goals)
         Serial.print(theta3);
         Serial.print('\n');
 
-        rc = -1;
+        disable_leg();
+        return -1;
     }
 
     if (rc == 0) {
@@ -297,7 +301,7 @@ int test_kinematics(int sensor1, int sensor2, int sensor3)
         Serial.print('\t');
         Serial.print(xyz[i]);
     }
-    Serial.print("#\n");
+    Serial.print("\n");
 
     inverse_kin(xyz, sensors, degrees);
 
@@ -322,7 +326,7 @@ int test_kinematics(int sensor1, int sensor2, int sensor3)
         Serial.print('\t');
         Serial.print(sensors[i]);
     }
-    Serial.print("#\n");
+    Serial.print("\n");
 
     Serial.print("#\n# Done with kinematics test\n################################################################\n\n");
 

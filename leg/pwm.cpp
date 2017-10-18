@@ -38,6 +38,10 @@ int set_pwm_scale(int scale)
 {
     int old_scale = pwm_scale;
 
+    if ((scale > 100) || (scale <= 0)) {
+        Serial.print("ERROR:  Invalid PWM scale.\n");
+        return -1;
+    }
     pwm_scale = scale;
 
     Serial.print("PWM scaling factor set to ");
@@ -48,7 +52,7 @@ int set_pwm_scale(int scale)
 }
 
 /*
- * This writes the value to the PWM, with no slow-start.
+ * This writes the value to the PWM, with no scaling or slow-start.
  *
  * The value is a percentage (0-100), and is saved in current_pwms[].
  *
@@ -81,20 +85,12 @@ void set_pwm(int valve, int percent)
         other_valve = valve + 3;
     analogWrite(pwm_pins[other_valve], 0);
     current_pwms[other_valve] = 0;
+    pwm_goals[other_valve] = 0;
 
-    normalized = (percent * PWM_MAX) / 100; /* Normalize to the analog resolution. */
+    /* Normalize from 0-100% to the analog resolution. */
+    normalized = (percent * PWM_MAX) / 100;
     if (normalized > PWM_MAX)
         normalized = PWM_MAX;
-
-#if 0
-    /* Write the normalized PWM percent to the PWM. */
-    if (normalized == 0) {
-        Serial.print("Writing 0 to PWM ");
-        Serial.print(valve);
-        Serial.print("\n");
-        analogWrite(pwm_pins[valve], 0);
-    }
-#endif
 
     if ((normalized == 0) || (deadMan || !deadman_forced != 0)) {
 #if 0
@@ -105,9 +101,7 @@ void set_pwm(int valve, int percent)
         Serial.print(" set to ");
         Serial.print(normalized);
         Serial.print('\n');
-#endif
         if (normalized != 0) {
-#if 0
             Serial.print("Writing ");
             Serial.print(normalized);
             Serial.print(" to PWM ");
@@ -115,11 +109,12 @@ void set_pwm(int valve, int percent)
             Serial.print(" (");
             Serial.print(percent);
             Serial.print("% requested)\n");
-#endif
         }
+#endif
         analogWrite(pwm_pins[valve], normalized);
     }
 
+#if 0
     if ((current_pwms[valve] != percent) && (percent != 0)) {
         DEBUG("PWM ");
         DEBUG(valve);
@@ -131,6 +126,15 @@ void set_pwm(int valve, int percent)
         DEBUG(normalized);
         DEBUG('\n');
     }
+#endif
+
+#if 0
+    Serial.print("Set PWM ");
+    Serial.print(valve);
+    Serial.print(" to ");
+    Serial.print(percent);
+    Serial.print('\n');
+#endif
     /* Save the requested PWM percentage, not scaled or normalized. */
     current_pwms[valve] = percent;
 
@@ -140,15 +144,15 @@ void set_pwm(int valve, int percent)
 
 /*
  * Set a goal for a particular PWM.  The PWM is accelerated towards
- * that goal.  XXX fixme:  No, it's not currently accelerated.
+ * that goal.
  *
  * pwm_id is 0-5, value is percentage - 0-100.
  */
 
+#define DO_ACCELERATION	1
+
 void set_pwm_goal(int pwm_id, int value)
 {
-    int other_pwm;
-
 /*
     DEBUG("set_pwm_goal(id = ");
     DEBUG(pwm_id);
@@ -173,37 +177,26 @@ void set_pwm_goal(int pwm_id, int value)
         return;
     }
 
-    /*
-     * If we're increasing the PWM percentage then set the PWM goal
-     * and let it accelerate slowly.
-     *
-     * If we're decreasing the PWM percentage then set it immediately
-     * to avoid overshooting the target.
-     */
-
     pwm_goals[pwm_id] = value;
 
+#if DO_ACCELERATION
+    adjust_pwms();
+#else
     if (current_pwms[pwm_id] != value)
         set_pwm(pwm_id, value);
-
-    /* Make sure the opposing PWM is off. */
-    if (pwm_id < 3)
-        other_pwm = 3;
-    else
-        other_pwm = -3;
-
-    if (current_pwms[pwm_id + other_pwm] != 0) {
-        pwm_goals[pwm_id + other_pwm] = 0;
-        set_pwm(pwm_id + other_pwm, 0);
-    }
+#endif
 
     return;
 }
 
 /*
  * Percentage is a desired percentage of the PWM usable range - for
- * most valves this is ~40% PWM to 100% PWM.  This is scaled to an
- * absolute PWM value, which is written to the PWM.
+ * most valves this range is ~40% PWM to 100% PWM.  This is scaled to
+ * an absolute PWM value, which is written to the PWM.
+ *
+ * This function seemed like a good idea, but it can't be used with
+ * the flash speed mapping table, since that uses absolute PWM
+ * percentages.
  */
 void set_scaled_pwm_goal(int pwm_id, int percentage)
 {
@@ -248,18 +241,25 @@ void set_scaled_pwm_goal(int pwm_id, int percentage)
  */
 void adjust_pwms(void)
 {
-#if 0
+#if DO_ACCELERATION
     int i;
     int diff;
+    int step;
 
     for (i = 0;i < 6;i++) {
         diff = pwm_goals[i] - current_pwms[i];
+        if (diff == 0)
+            continue;
+
+        /* Accelerate at 1% per call to this function. */
         if (diff > 0)
-            set_pwm(i, current_pwms[i] + 1);
-        else if (diff < 0)
-            set_pwm(i, pwm_goals[i]);
+            step = 1;
+        else
+            step = -1;
+
+        set_pwm(i, current_pwms[i] + step);
     }
-#endif
+#endif /* DO_ACCELERATION */
     return;
 }
 
