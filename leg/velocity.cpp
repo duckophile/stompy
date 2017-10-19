@@ -183,7 +183,7 @@ int set_xyz_goal(double xyz[3], int speed)
  * XXX fixme: I think the table should contain inches/sec of foot
  * movement.
  */
-int set_joint_speed(uint32_t valve, uint32_t joint_speed)
+static int set_joint_speed(uint32_t valve, uint32_t joint_speed)
 {
     uint32_t n;
     uint32_t pwm_offset;
@@ -260,7 +260,7 @@ int set_joint_speed(uint32_t valve, uint32_t joint_speed)
  * directions[] indicates if each joint is moving IN or OUT.
  *
  */
-void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
+static void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
 {
     int i;
     int sensor_speed;
@@ -374,7 +374,7 @@ void set_velocity_pwms(int foot_speed, double speed_scale[], int directions[])
     return;
 }
 
-double calculate_distance(double current[], double goal[])
+static double calculate_distance(double current[], double goal[])
 {
     int i;
     double tally = 0;
@@ -420,9 +420,10 @@ double calculate_distance(double current[], double goal[])
  *
  * - The desired speeds can be turned directly into PWM values.
  *
+ * XXX fixme:  I think this should take an input speed!
  */
 
-void calculate_speeds(double speed_scale[], int joint_direction[])
+static void calculate_speeds(double speed_scale[], int joint_direction[])
 {
     int i;
     double largest_delta = 0;
@@ -526,6 +527,7 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
     return;
 }
 
+#if 0
 /* The joystick will move the leg at most 4 feet/sec. */
 #define JOYSTICK_SPEED_FPS	4
 
@@ -533,7 +535,7 @@ void calculate_speeds(double speed_scale[], int joint_direction[])
  * Move the XYZ goal based on the joystick position.
  */
 
-void do_joystick_xyz(void)
+static void do_joystick_xyz(void)
 {
     int i;
     int val;
@@ -611,6 +613,7 @@ void do_joystick_xyz(void)
 
     return;
 }
+#endif
 
 /*
  * The general idea for positon is:
@@ -775,6 +778,7 @@ redo:
      * leg's already in motion.  Maybe that's the PIDs job.
      */
     /* XXX fixme:  I should't calculate the speeds until I know I'll need them. */
+    /* XXX fixme:  I need to take a desired speed input here! */
     calculate_speeds(speed_scale, joint_direction);
 
 #if 0
@@ -811,8 +815,8 @@ redo:
 
     if (distance < 0.75) {
         /*
-         * XXX fixme: If there is a list of waypoints queued then go
-         * to the next one and goto redo:.
+         * If there is a list of waypoints queued then go to the next
+         * one and goto redo:.
          */
         if (queued_point_count()) {
             double next_xyz[3];
