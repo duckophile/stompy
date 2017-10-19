@@ -46,18 +46,25 @@
  *
  */
 
+/*
+ * Checks for a keypress.  ^C aborts and disables the leg.
+ */
 int check_keypress(void)
 {
+    int ch;
+    int rc = 0;
+
     if (Serial.available() > 0) {
-        (void)Serial.read();
-        set_pwm_scale(60);
-        pwms_off();
-        disable_leg();
+        ch = Serial.read();
+        if (ch == 3) { /* ^C */
+            disable_leg();
+        }
         Serial.print("\n# Aborted by keypress.\n\n");
-        return 1;
+        pwms_off();
+        rc = 1;
     }
 
-    return 0;
+    return rc;
 }
 
 void capped_pwm_write(int valve, int percent)
@@ -377,10 +384,8 @@ int exercise_joint(int joint, int direction, int pwm_goal, int verbose)
             break;
         }
 
-        if (check_keypress()) {
-            Serial.print("\n\n**** Aborted by keypress\n\n");
+        if (check_keypress())
             goto fail;
-        }
 
 #if 0
         Serial.print("Writing ");
@@ -995,6 +1000,14 @@ failed:
  *
  * XXX fixme: If this is the thigh then it needs an artificial
  * end-of-travel to keep it from hitting the ground.
+ *
+ * XXX fixme: The approximate delta between the low and high sensor
+ * values is known, since the cylinder travel is known and the sensor
+ * change per unit of sensor travel is known.  The delta between the
+ * limits obtained during this calibration should be compared to the
+ * theoretical delta.  This is especially important for the knee,
+ * which may appear to stop moving during the gravity crossing when
+ * moving in.
  */
 int find_joint_sensor_limit(int joint, int direction, int pwm_val)
 {
@@ -1175,6 +1188,7 @@ int find_joint_pwm_speeds(int joint, int count)
             other_direction = OUT;
 
         Serial.print("\n# Moving joint to position.\n");
+        /* XXX fixme:  Call measure_speed instead of exercise_joint. */
         if (exercise_joint(joint, other_direction, LOW_PWM_MOVEMENT(joint + other_direction) + 5, 0) == -1)
             return -1;
         Serial.print("# Joint in position, waiting...\n\n");
@@ -1204,6 +1218,7 @@ int find_joint_pwm_speeds(int joint, int count)
             Serial.print(pwm_val);
             Serial.print("%\n");
 
+            /* XXX fixme:  Call measure_speed instead of exercise_joint. */
             rc = exercise_joint(joint, direction, pwm_val, 1);
             if (rc == -1) {
                 Serial.print("exercise_joint() failed.\n");
@@ -1339,6 +1354,7 @@ int set_joint_limits(int joint)
     int direction = IN;
     int old_pwm_scale;
     int old_int_state;
+    int old_leg_state;
 
     pwms_off();
 
@@ -1348,10 +1364,8 @@ int set_joint_limits(int joint)
     }
 
     old_int_state = set_interrupt_state(0);
-
     old_pwm_scale = set_pwm_scale(100);
-
-    enable_leg();
+    old_leg_state = set_leg_state(1);
 
     /* Get thigh and knee into place. */
 
@@ -1459,6 +1473,7 @@ fail:
     set_interrupt_state(old_int_state);
     set_pwm_scale(old_pwm_scale);
     reset_current_location();
+    set_leg_state(old_leg_state);
 
     return rc;
 }
@@ -1476,6 +1491,7 @@ int calibrate_joint(int joint, int rep_count)
 {
     int old_pwm_scale;
     int old_int_state;
+    int old_leg_state;
 
     if (!check_deadman()) {
         Serial.print("ERROR:  Deadman has leg disabled!\n");
@@ -1489,7 +1505,7 @@ int calibrate_joint(int joint, int rep_count)
 
     pwms_off();
     old_int_state = set_interrupt_state(0);
-    enable_leg();
+    old_leg_state = set_leg_state(1);
 
     /* Get thigh and knee into place. */
     park_leg();
@@ -1539,6 +1555,7 @@ fail:
     reset_current_location();
     set_pwm_scale(old_pwm_scale);
     set_interrupt_state(old_int_state);
+    set_leg_state(old_leg_state);
 
     return 0;
 }
