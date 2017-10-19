@@ -134,11 +134,11 @@ leg_info_t leg_info;
 int max_sensor_seen[NR_SENSORS];
 int min_sensor_seen[NR_SENSORS] = {1 << 30, 1 << 30, 1 << 30, 1 << 30};
 
-#define TRIPLE_SENSOR_SAMPLE	0
+#define TRIPLE_SENSOR_SAMPLE	1
 
-#define AVERAGE_SENSORS		0
+#define AVERAGE_SENSORS		1
 #if AVERAGE_SENSORS
-#define SENSOR_BUFFER_SIZE	10
+#define SENSOR_BUFFER_SIZE	6
 int sensor_buffer[NR_SENSORS][SENSOR_BUFFER_SIZE];
 int sensor_idxs[NR_SENSORS];
 int sensor_tally[NR_SENSORS];
@@ -251,7 +251,8 @@ int park_leg(void)
     speed = LOW_PWM_MOVEMENT(THIGHPWM_IN) + 5;
     if (speed > 100)
         speed = 50;
-    measure_speed(THIGH, IN, speed, 0);
+    if (measure_speed(THIGH, IN, speed, 0) == -1)
+        goto fail;
 
     delay(100);
 
@@ -260,7 +261,10 @@ int park_leg(void)
     speed = LOW_PWM_MOVEMENT(KNEEPWM_OUT) + 5;
     if (speed > 100)
         speed = 50;
-    measure_speed(KNEE, OUT, speed, 0);
+    if (measure_speed(KNEE, OUT, speed, 0) == -1)
+        goto fail;
+    if (measure_speed(KNEE, OUT, speed + 10, 0) == -1)
+        goto fail;
 
     delay(100);
 
@@ -270,8 +274,10 @@ int park_leg(void)
     speed = LOW_PWM_MOVEMENT(HIPPWM_IN) + 5;
     if (speed > 100)
         speed = 50;
-    measure_speed(HIP, IN, speed, 0);
+    if (measure_speed(HIP, IN, speed, 0) == -1)
+        goto fail;
 
+fail:
     /* Set the goal to wherever we are now. */
     reset_current_location();
 
