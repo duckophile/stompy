@@ -537,6 +537,12 @@ static int func_stop(void)
     return 0;
 }
 
+/*
+ * Finds the lowest PWM value that gives joint movement
+ * (find_joint_first_movement()) and the sensor low and high limits
+ * (find_joint_sensor_limits()).
+ *
+ */
 static int func_findlimits(void)
 {
     int joint = -1;
@@ -556,6 +562,7 @@ static int func_findlimits(void)
     return set_joint_limits(joint);
 }
 
+/* Find the PWM/Speed mappings for the hip. */
 static int func_hipcal(void)
 {
     int count;
@@ -564,6 +571,7 @@ static int func_hipcal(void)
     return calibrate_joint(HIP, count);
 }
 
+/* Find the PWM/Speed mappings for the knee. */
 static int func_kneecal(void)
 {
     int count;
@@ -572,6 +580,7 @@ static int func_kneecal(void)
     return calibrate_joint(KNEE, count);
 }
 
+/* Find the PWM/Speed mappings for the thigh. */
 static int func_thighcal(void)
 {
     int count;
@@ -631,6 +640,9 @@ static int func_setloc(void)
  */
 static int func_speed(void)
 {
+    Serial.print("Wrong command.\n");
+
+#if 0
     int pwm;
     int joint = HIP;
     int rnd;
@@ -660,6 +672,7 @@ static int func_speed(void)
     }
 
     set_interrupt_state(old_int_state);
+#endif
 
     return 0;
 }
