@@ -194,25 +194,31 @@ void set_pwm_goal(int pwm_id, int value)
  * most valves this range is ~40% PWM to 100% PWM.  This is scaled to
  * an absolute PWM value, which is written to the PWM.
  *
- * This function seemed like a good idea, but it can't be used with
- * the flash speed mapping table, since that uses absolute PWM
- * percentages.
+ * XXX fixme: This is what this function should do:
+ * If the given percentage is greater than 0 but less than the low
+ * movement value, set the PWM to the low movement value.
+ *
+ * Otherwise, take the delta between the requested percentage and the
+ * low movement value, scale THAT by the PWM scaling factor, then add
+ * it back to the low movement value.
+ *
+ * BUT, the speeds still won't match the speed mapping table.
+ * Hopefully scaling all three axes down by the same scaling factor
+ * will still give the correct arrival time?
  */
 void set_scaled_pwm_goal(int pwm_id, int percentage)
 {
-    int usable_range;
     int ljm;
     int scaled_percentage;
 
     ljm = leg_info.valves[pwm_id].low_joint_movement;
-    usable_range = 100 - ljm; /* probably around 60. */
-
-    /* Scale PWM for global PWM scaling factor. */
-    percentage = (percentage * pwm_scale) / 100;
-
-    /* Fit the percentage to the usable range of the PWM. */
-    scaled_percentage = (percentage * usable_range) / 100;
-    /* And move it to the proper place of thge scale. */
+    if (percentage < ljm)
+        percentage = ljm;
+    /* The delta between low movement and the desired percentage. */
+    scaled_percentage = percentage - ljm;
+    /* scale by the PWM scaling factor. */
+    scaled_percentage = (scaled_percentage * pwm_scale) / 100;
+    /* Add back the low joint movement offset. */
     scaled_percentage += ljm;
 
 #if 0
@@ -222,8 +228,6 @@ void set_scaled_pwm_goal(int pwm_id, int percentage)
     Serial.print(percentage);
     Serial.print("% with scaling factor of ");
     Serial.print(pwm_scale);
-    Serial.print("% to fit usable range of ");
-    Serial.print(usable_range);
     Serial.print(" and got absolute PWM ");
     Serial.print(scaled_percentage);
     Serial.print("%.\n");
